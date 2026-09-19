@@ -3,9 +3,28 @@ import type { Candidate, FundCategoryDefinition, MutualFundScheme, Sector } from
 
 export type RiskProfileName = "Conservative" | "Balanced" | "Aggressive";
 export type InstrumentType = "Stocks" | "MutualFunds" | "Etf";
+export type FundMix = "Equity" | "Debt" | "Both";
 
 /** Fixed display/processing order, independent of how the user checked them. */
 export const INSTRUMENT_TYPE_ORDER: InstrumentType[] = ["Stocks", "MutualFunds", "Etf"];
+
+/**
+ * User-facing choice that overrides the risk profile's equity/debt split
+ * within the Mutual Funds and ETF buckets — direct control instead of only
+ * an inferred one. Each option ships with a one-line explanation shown in
+ * the UI, not just a raw label.
+ */
+export const FUND_MIX_OPTIONS: { value: FundMix; label: string; description: string }[] = [
+  { value: "Equity", label: "Equity only", description: "Higher growth potential, more volatility." },
+  { value: "Debt", label: "Debt only", description: "More stable, lower expected returns." },
+  { value: "Both", label: "Equity + Debt", description: "Balanced mix based on your risk profile." },
+];
+
+function equityShareForMix(fundMix: FundMix, profileEquityShare: number): number {
+  if (fundMix === "Equity") return 100;
+  if (fundMix === "Debt") return 0;
+  return profileEquityShare;
+}
 
 export interface RiskProfileWeights {
   stocksPercent: number;
@@ -72,6 +91,7 @@ export interface AllocationPlan {
   totalAmount: number;
   profile: RiskProfileName;
   selectedTypes: InstrumentType[];
+  fundMix: FundMix;
   buckets: AllocationBucket[];
 }
 
@@ -229,10 +249,12 @@ export function buildAllocation(
   debtFundCategories: FundCategoryDefinition[],
   equityEtfCategories: FundCategoryDefinition[],
   debtEtfCategories: FundCategoryDefinition[],
+  fundMix: FundMix = "Both",
 ): AllocationPlan {
   const weights = RISK_PROFILES[profile];
   const selected = INSTRUMENT_TYPE_ORDER.filter((t) => selectedTypes.includes(t));
   const amounts = splitBySelectedTypes(amount, weights, selected);
+  const equityShare = equityShareForMix(fundMix, weights.equityShareWithinFunds);
 
   const buckets: AllocationBucket[] = [];
 
@@ -244,7 +266,7 @@ export function buildAllocation(
       buildFundsBucket(
         "Mutual Funds",
         amounts.MutualFunds,
-        weights.equityShareWithinFunds,
+        equityShare,
         allSchemes,
         equityFundCategories,
         debtFundCategories,
@@ -256,7 +278,7 @@ export function buildAllocation(
       buildFundsBucket(
         "ETFs",
         amounts.Etf,
-        weights.equityShareWithinFunds,
+        equityShare,
         allSchemes,
         equityEtfCategories,
         debtEtfCategories,
@@ -264,5 +286,5 @@ export function buildAllocation(
     );
   }
 
-  return { totalAmount: amount, profile, selectedTypes: selected, buckets };
+  return { totalAmount: amount, profile, selectedTypes: selected, fundMix, buckets };
 }

@@ -364,4 +364,73 @@ describe("buildAllocation", () => {
       expect(plan.buckets.reduce((sum, b) => sum + b.amount, 0)).toBe(10_003);
     }
   });
+
+  it('fundMix "Equity": sends the entire Mutual Funds/ETF amount to equity categories, none to debt', () => {
+    const plan = buildAllocation(
+      1000,
+      "Balanced",
+      ["MutualFunds"],
+      [],
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+      "Equity",
+    );
+    const mutualFunds = plan.buckets.find((b) => b.bucket === "Mutual Funds")!;
+    expect(mutualFunds.allocations).toEqual([
+      { type: "fundCategory", label: "Large Cap", amount: 1000, exampleSchemes: [], group: "Equity" },
+      { type: "fundCategory", label: "Liquid Fund", amount: 0, exampleSchemes: [], group: "Debt" },
+    ]);
+    expect(plan.fundMix).toBe("Equity");
+  });
+
+  it('fundMix "Debt": sends the entire Mutual Funds/ETF amount to debt categories, none to equity', () => {
+    const plan = buildAllocation(
+      1000,
+      "Aggressive",
+      ["Etf"],
+      [],
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+      "Debt",
+    );
+    // Even though Aggressive's equityShareWithinFunds is 80%, "Debt" overrides it entirely.
+    expect(plan.buckets[0].allocations).toEqual([
+      { type: "fundCategory", label: "Equity ETF", amount: 0, exampleSchemes: [], group: "Equity" },
+      { type: "fundCategory", label: "Gold ETF", amount: 1000, exampleSchemes: [], group: "Debt" },
+    ]);
+  });
+
+  it('fundMix "Both" (the default) falls back to the profile\'s own equityShareWithinFunds', () => {
+    const withDefault = buildAllocation(
+      1000,
+      "Balanced",
+      ["MutualFunds"],
+      [],
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+    );
+    const explicit = buildAllocation(
+      1000,
+      "Balanced",
+      ["MutualFunds"],
+      [],
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+      "Both",
+    );
+    expect(withDefault).toEqual(explicit);
+    expect(withDefault.fundMix).toBe("Both");
+  });
 });

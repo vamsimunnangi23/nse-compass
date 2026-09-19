@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MAX_STOCKS, MAX_STOCKS_PER_SECTOR, RISK_PROFILES } from "@/lib/allocation";
+import { FUND_MIX_OPTIONS, MAX_STOCKS, MAX_STOCKS_PER_SECTOR, RISK_PROFILES } from "@/lib/allocation";
 import type { RiskProfileName } from "@/lib/allocation";
 import {
   DEBT_ETF_CATEGORIES,
@@ -153,12 +153,22 @@ export default function MethodologyPage() {
           })}
         </ul>
         <p className="mt-3 text-muted">
-          The same profile also decides the equity/debt split{" "}
+          By default, the same profile also decides the equity/debt split{" "}
           <em>within</em> the Mutual Funds and ETF buckets, whether or not
           the other instrument types are also checked — e.g. Balanced puts{" "}
           {RISK_PROFILES.Balanced.equityShareWithinFunds}% of that money into
-          equity-type categories and the rest into debt-type categories.
+          equity-type categories and the rest into debt-type categories. You
+          can override this directly with the &ldquo;Within Mutual Funds &amp;
+          ETFs, favor&rdquo; choice:
         </p>
+        <ul className="mt-3 flex flex-col gap-1 text-muted">
+          {FUND_MIX_OPTIONS.map((o) => (
+            <li key={o.value}>
+              <span className="font-semibold text-foreground">{o.label}</span> —{" "}
+              {o.description}
+            </li>
+          ))}
+        </ul>
         <p className="mt-3 text-muted">
           The stocks bucket is split equally across the top {MAX_STOCKS} tracked
           stocks scoring Watch or better, capped at {MAX_STOCKS_PER_SECTOR} per

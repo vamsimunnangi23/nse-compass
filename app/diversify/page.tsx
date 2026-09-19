@@ -2,8 +2,13 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { DisclaimerBanner, ErrorBanner } from "@/components/Banners";
 import { attempt } from "@/lib/attempt";
-import { buildAllocation, INSTRUMENT_TYPE_ORDER, RISK_PROFILES } from "@/lib/allocation";
-import type { AllocationPlan, InstrumentType, RiskProfileName } from "@/lib/allocation";
+import {
+  buildAllocation,
+  FUND_MIX_OPTIONS,
+  INSTRUMENT_TYPE_ORDER,
+  RISK_PROFILES,
+} from "@/lib/allocation";
+import type { AllocationPlan, FundMix, InstrumentType, RiskProfileName } from "@/lib/allocation";
 import {
   DEBT_ETF_CATEGORIES,
   DEBT_FUND_CATEGORIES,
@@ -82,6 +87,33 @@ function TypeToggleCard({ type, defaultChecked }: { type: InstrumentType; defaul
   );
 }
 
+function FundMixCard({
+  option,
+  checked,
+}: {
+  option: { value: FundMix; label: string; description: string };
+  checked: boolean;
+}) {
+  return (
+    <label className="group relative flex flex-1 cursor-pointer items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 transition-colors has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
+      <input
+        type="radio"
+        name="mix"
+        value={option.value}
+        defaultChecked={checked}
+        className="sr-only"
+      />
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border transition-colors group-has-[:checked]:border-accent">
+        <span className="h-2 w-2 rounded-full bg-transparent transition-colors group-has-[:checked]:bg-accent" />
+      </span>
+      <span className="flex flex-col">
+        <span className="text-sm font-semibold">{option.label}</span>
+        <span className="text-xs text-muted">{option.description}</span>
+      </span>
+    </label>
+  );
+}
+
 function parseAmount(raw: string | undefined): number | null {
   if (!raw) return null;
   const n = Number(raw);
@@ -98,6 +130,12 @@ function parseSelectedTypes(raw: string | string[] | undefined): InstrumentType[
   return INSTRUMENT_TYPE_ORDER.filter((t) => values.includes(t));
 }
 
+const FUND_MIX_VALUES = FUND_MIX_OPTIONS.map((o) => o.value);
+
+function isFundMix(value: string | undefined): value is FundMix {
+  return !!value && (FUND_MIX_VALUES as string[]).includes(value);
+}
+
 function symbolSlug(symbol: string): string {
   return encodeURIComponent(symbol.replace(/\.NS$/, ""));
 }
@@ -110,10 +148,12 @@ async function Results({
   amount,
   profile,
   selectedTypes,
+  fundMix,
 }: {
   amount: number;
   profile: RiskProfileName;
   selectedTypes: InstrumentType[];
+  fundMix: FundMix;
 }) {
   const result = await attempt(async () => {
     const [candidates, schemes] = await Promise.all([getAllCandidates(), getAllSchemes()]);
@@ -127,6 +167,7 @@ async function Results({
       DEBT_FUND_CATEGORIES,
       EQUITY_ETF_CATEGORIES,
       DEBT_ETF_CATEGORIES,
+      fundMix,
     );
   });
 
@@ -138,11 +179,13 @@ function AllocationResult({ plan }: { plan: AllocationPlan }) {
   return (
     <div className="flex flex-col gap-6">
       {plan.buckets.map((bucket) => {
+        // Filter out zero-amount categories (e.g. "Debt only" zeroes out
+        // every Equity category) so the display doesn't show empty ₹0 lines.
         const equityAllocations = bucket.allocations.filter(
-          (a) => a.type === "fundCategory" && a.group === "Equity",
+          (a) => a.type === "fundCategory" && a.group === "Equity" && a.amount > 0,
         );
         const debtAllocations = bucket.allocations.filter(
-          (a) => a.type === "fundCategory" && a.group === "Debt",
+          (a) => a.type === "fundCategory" && a.group === "Debt" && a.amount > 0,
         );
         const stockAllocations = bucket.allocations.filter((a) => a.type === "stock");
 
@@ -232,6 +275,7 @@ export default async function DiversifyPage({
     amount?: string;
     profile?: string;
     type?: string | string[];
+    mix?: string;
     submitted?: string;
   }>;
 }) {
@@ -239,6 +283,7 @@ export default async function DiversifyPage({
   const amount = parseAmount(params.amount);
   const invalidAmount = params.amount !== undefined && amount === null;
   const profile: RiskProfileName = isRiskProfile(params.profile) ? params.profile : "Balanced";
+  const fundMix: FundMix = isFundMix(params.mix) ? params.mix : "Both";
 
   // On a fresh visit (no form submission yet) default to all three checked.
   // Once submitted, respect exactly what's checked — including "none".
@@ -319,13 +364,27 @@ export default async function DiversifyPage({
             ))}
           </div>
         </div>
+
+        <div>
+          <p className="text-sm text-muted">
+            Within Mutual Funds &amp; ETFs, favor
+          </p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+            {FUND_MIX_OPTIONS.map((o) => (
+              <FundMixCard key={o.value} option={o} checked={fundMix === o.value} />
+            ))}
+          </div>
+        </div>
       </form>
 
       {selectedTypes.length > 0 && (
         <p className="mt-2 text-xs text-muted">
           {selectedTypes.length === 1
             ? `Risk profile only affects the equity/debt split within ${TYPE_LABELS[selectedTypes[0]]}.`
-            : "The risk profile decides both the split across what you checked and the equity/debt split within Mutual Funds and ETFs. Checking fewer types renormalizes their relative weights — it doesn't change their ratio to each other."}
+            : "The risk profile decides the split across what you checked. Checking fewer types renormalizes their relative weights — it doesn't change their ratio to each other."}{" "}
+          {fundMix === "Both"
+            ? "It also decides the equity/debt split within Mutual Funds and ETFs, unless you override that below."
+            : `You've overridden that below: Mutual Funds and ETFs go entirely to ${fundMix === "Equity" ? "equity" : "debt"} categories.`}
         </p>
       )}
 
@@ -343,7 +402,12 @@ export default async function DiversifyPage({
               <div className="h-40 animate-pulse rounded-xl border border-border bg-surface" />
             }
           >
-            <Results amount={amount} profile={profile} selectedTypes={selectedTypes} />
+            <Results
+              amount={amount}
+              profile={profile}
+              selectedTypes={selectedTypes}
+              fundMix={fundMix}
+            />
           </Suspense>
         </div>
       )}
