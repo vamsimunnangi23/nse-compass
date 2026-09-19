@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Candidate, RiskTier } from "@/lib/types";
+import type { Candidate, RiskTier, Signal } from "@/lib/types";
 import { useMode } from "./ModeContext";
 import { RiskBadge, ScoreBadge, SignalBadge } from "./Badges";
 
 const RISK_RANK: Record<RiskTier, number> = { Low: 0, Medium: 1, High: 2 };
+// Ascending mirrors the scoring thresholds: most cautious first, most bullish last.
+const SIGNAL_RANK: Record<Signal, number> = { Caution: 0, Neutral: 1, Watch: 2, Bullish: 3 };
 
-type SortKey = "price" | "risk";
+type SortKey = "price" | "signal" | "risk";
 type SortDir = "asc" | "desc";
 interface SortState {
   key: SortKey | null;
@@ -17,6 +19,7 @@ interface SortState {
 
 const SORT_VALUE: Record<SortKey, (c: Candidate) => number> = {
   price: (c) => c.price,
+  signal: (c) => SIGNAL_RANK[c.signal],
   risk: (c) => RISK_RANK[c.riskTier],
 };
 
@@ -90,7 +93,14 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
                 />
               </th>
               <th className="px-4 py-3 font-medium">Change</th>
-              <th className="px-4 py-3 font-medium">Signal</th>
+              <th className="px-4 py-3 font-medium">
+                <SortableHeader
+                  label="Signal"
+                  active={sort.key === "signal"}
+                  dir={sort.dir}
+                  onClick={() => toggleSort("signal")}
+                />
+              </th>
               <th className="px-4 py-3 font-medium">Score</th>
               <th className="px-4 py-3 font-medium">
                 <SortableHeader
