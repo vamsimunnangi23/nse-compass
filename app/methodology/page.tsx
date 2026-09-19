@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   MARKET_HEADWIND_PENALTY,
   RISK_THRESHOLDS,
@@ -106,8 +107,17 @@ export default function MethodologyPage() {
           This is a technical screener over a fixed list of large-cap NSE
           stocks — it does not read news, fundamentals, or order-book depth,
           and a high score describes favorable historical conditions, not a
-          prediction. Treat it as one input among many, not a
-          recommendation.
+          prediction. This formula was designed from common technical-analysis
+          conventions, not backtested or reviewed by a financial professional.
+          Treat it as one input among many, not a recommendation.
+        </p>
+        <p className="mt-3 text-muted">
+          Don&apos;t just take our word for whether these signals mean
+          anything —{" "}
+          <Link href="/track-record" className="text-accent hover:underline">
+            see the Track Record
+          </Link>{" "}
+          for measured, real forward performance of each signal over time.
         </p>
       </section>
     </div>

@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "/top-picks", label: "Top Picks" },
   { href: "/stocks", label: "Stocks" },
   { href: "/market", label: "Market" },
+  { href: "/track-record", label: "Track Record" },
   { href: "/learn", label: "Learn" },
   { href: "/methodology", label: "Methodology" },
 ];
