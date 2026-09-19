@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Candidate, RiskTier } from "@/lib/types";
 import { useMode } from "./ModeContext";
 import { RiskBadge, ScoreBadge, SignalBadge } from "./Badges";
@@ -28,6 +28,9 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
   const { mode } = useMode();
   const advanced = mode === "Advanced";
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const sorted = useMemo(() => {
     if (!sort.key) return candidates;
@@ -35,6 +38,30 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...candidates].sort((a, b) => (getValue(a) - getValue(b)) * dir);
   }, [candidates, sort]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function updateScrollState() {
+      if (!el) return;
+      setCanScrollLeft(el.scrollLeft > 1);
+      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    }
+
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(el);
+
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      resizeObserver.disconnect();
+    };
+    // Column count and row content can change the table's natural width
+    // without resizing the scroll container itself, so re-measure then too.
+  }, [sorted, advanced]);
 
   function toggleSort(key: SortKey) {
     setSort((current) => {
@@ -45,81 +72,98 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <table className="w-full min-w-[640px] text-left text-sm">
-        <thead>
-          <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
-            <th className="px-4 py-3 font-medium">Stock</th>
-            <th className="px-4 py-3 font-medium">
-              <SortableHeader
-                label="Price"
-                active={sort.key === "price"}
-                dir={sort.dir}
-                onClick={() => toggleSort("price")}
-              />
-            </th>
-            <th className="px-4 py-3 font-medium">Change</th>
-            <th className="px-4 py-3 font-medium">Signal</th>
-            <th className="px-4 py-3 font-medium">Score</th>
-            <th className="px-4 py-3 font-medium">
-              <SortableHeader
-                label="Risk"
-                active={sort.key === "risk"}
-                dir={sort.dir}
-                onClick={() => toggleSort("risk")}
-              />
-            </th>
-            {advanced && <th className="px-4 py-3 font-medium">RSI (14)</th>}
-            {advanced && <th className="px-4 py-3 font-medium">Vol vs 20d avg</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((c) => {
-            const positive = c.changePercent >= 0;
-            return (
-              <tr key={c.symbol} className="border-b border-border last:border-0">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/stocks/${symbolSlug(c.symbol)}`}
-                    className="font-semibold hover:text-accent transition-colors"
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        className="overflow-x-auto rounded-xl border border-border bg-surface"
+      >
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
+              <th className="px-4 py-3 font-medium">Stock</th>
+              <th className="px-4 py-3 font-medium">
+                <SortableHeader
+                  label="Price"
+                  active={sort.key === "price"}
+                  dir={sort.dir}
+                  onClick={() => toggleSort("price")}
+                />
+              </th>
+              <th className="px-4 py-3 font-medium">Change</th>
+              <th className="px-4 py-3 font-medium">Signal</th>
+              <th className="px-4 py-3 font-medium">Score</th>
+              <th className="px-4 py-3 font-medium">
+                <SortableHeader
+                  label="Risk"
+                  active={sort.key === "risk"}
+                  dir={sort.dir}
+                  onClick={() => toggleSort("risk")}
+                />
+              </th>
+              {advanced && <th className="px-4 py-3 font-medium">RSI (14)</th>}
+              {advanced && <th className="px-4 py-3 font-medium">Vol vs 20d avg</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => {
+              const positive = c.changePercent >= 0;
+              return (
+                <tr key={c.symbol} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/stocks/${symbolSlug(c.symbol)}`}
+                      className="font-semibold hover:text-accent transition-colors"
+                    >
+                      {c.name}
+                    </Link>
+                    <p className="text-xs text-muted">{c.sector}</p>
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">
+                    {c.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </td>
+                  <td
+                    className={`px-4 py-3 tabular-nums font-medium ${positive ? "text-accent" : "text-danger"}`}
                   >
-                    {c.name}
-                  </Link>
-                  <p className="text-xs text-muted">{c.sector}</p>
-                </td>
-                <td className="px-4 py-3 tabular-nums">
-                  {c.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                </td>
-                <td
-                  className={`px-4 py-3 tabular-nums font-medium ${positive ? "text-accent" : "text-danger"}`}
-                >
-                  {positive ? "+" : ""}
-                  {c.changePercent.toFixed(2)}%
-                </td>
-                <td className="px-4 py-3">
-                  <SignalBadge signal={c.signal} />
-                </td>
-                <td className="px-4 py-3">
-                  <ScoreBadge score={c.score} />
-                </td>
-                <td className="px-4 py-3">
-                  <RiskBadge risk={c.riskTier} />
-                </td>
-                {advanced && (
-                  <td className="px-4 py-3 tabular-nums">
-                    {c.indicators.rsi14.toFixed(0)}
+                    {positive ? "+" : ""}
+                    {c.changePercent.toFixed(2)}%
                   </td>
-                )}
-                {advanced && (
-                  <td className="px-4 py-3 tabular-nums">
-                    {c.indicators.volumeRatio.toFixed(2)}x
+                  <td className="px-4 py-3">
+                    <SignalBadge signal={c.signal} />
                   </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <td className="px-4 py-3">
+                    <ScoreBadge score={c.score} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <RiskBadge risk={c.riskTier} />
+                  </td>
+                  {advanced && (
+                    <td className="px-4 py-3 tabular-nums">
+                      {c.indicators.rsi14.toFixed(0)}
+                    </td>
+                  )}
+                  {advanced && (
+                    <td className="px-4 py-3 tabular-nums">
+                      {c.indicators.volumeRatio.toFixed(2)}x
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {canScrollLeft && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 w-8 rounded-l-xl bg-gradient-to-r from-surface to-transparent"
+        />
+      )}
+      {canScrollRight && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-surface to-transparent"
+        />
+      )}
     </div>
   );
 }
