@@ -2,23 +2,41 @@ import { SIGNAL_THRESHOLDS } from "./scoring";
 import type { Candidate, FundCategoryDefinition, MutualFundScheme, Sector } from "./types";
 
 export type RiskProfileName = "Conservative" | "Balanced" | "Aggressive";
+export type InstrumentScope = "Mix" | "StocksOnly" | "MutualFundsOnly" | "EtfOnly";
 
 export interface RiskProfileWeights {
   stocksPercent: number;
-  equityFundsPercent: number;
-  debtFundsPercent: number;
+  mutualFundsPercent: number;
+  etfPercent: number;
+  /** Applied to both the Mutual Funds and ETF buckets' internal equity/debt split. */
+  equityShareWithinFunds: number;
 }
 
 /**
  * Illustrative presets, not personalized advice — the app never infers a
- * risk profile from anything about the user; they pick one of these
- * three themselves. Documented here and rendered directly on the
- * methodology page, same pattern as SCORE_WEIGHTS.
+ * risk profile from anything about the user; they pick one of these three
+ * themselves. Documented here and rendered directly on the methodology
+ * page, same pattern as SCORE_WEIGHTS.
  */
 export const RISK_PROFILES: Record<RiskProfileName, RiskProfileWeights> = {
-  Conservative: { stocksPercent: 10, equityFundsPercent: 20, debtFundsPercent: 70 },
-  Balanced: { stocksPercent: 25, equityFundsPercent: 35, debtFundsPercent: 40 },
-  Aggressive: { stocksPercent: 40, equityFundsPercent: 40, debtFundsPercent: 20 },
+  Conservative: {
+    stocksPercent: 10,
+    mutualFundsPercent: 60,
+    etfPercent: 30,
+    equityShareWithinFunds: 25,
+  },
+  Balanced: {
+    stocksPercent: 25,
+    mutualFundsPercent: 45,
+    etfPercent: 30,
+    equityShareWithinFunds: 55,
+  },
+  Aggressive: {
+    stocksPercent: 40,
+    mutualFundsPercent: 35,
+    etfPercent: 25,
+    equityShareWithinFunds: 80,
+  },
 };
 
 export const MAX_STOCKS = 5;
@@ -38,10 +56,11 @@ export interface FundCategoryAllocation {
   label: string;
   amount: number;
   exampleSchemes: string[];
+  group: "Equity" | "Debt";
 }
 
 export interface AllocationBucket {
-  bucket: "Stocks" | "Equity Funds" | "Debt Funds";
+  bucket: "Stocks" | "Mutual Funds" | "ETFs";
   amount: number;
   allocations: (StockAllocation | FundCategoryAllocation)[];
 }
@@ -49,6 +68,7 @@ export interface AllocationBucket {
 export interface AllocationPlan {
   totalAmount: number;
   profile: RiskProfileName;
+  scope: InstrumentScope;
   buckets: AllocationBucket[];
 }
 
@@ -58,6 +78,12 @@ export function splitEqually(amount: number, count: number): number[] {
   const base = Math.floor(amount / count);
   const remainder = amount - base * count;
   return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+/** Splits `amount` into [equity, debt] shares that sum back to exactly `amount`. */
+export function splitByEquityShare(amount: number, equitySharePercent: number): [number, number] {
+  const equity = Math.round((amount * equitySharePercent) / 100);
+  return [equity, amount - equity];
 }
 
 /**
@@ -92,6 +118,7 @@ export function buildFundCategoryAllocations(
   amount: number,
   categoryDefs: FundCategoryDefinition[],
   allSchemes: MutualFundScheme[],
+  group: "Equity" | "Debt",
   examplesPerCategory: number = EXAMPLE_SCHEMES_PER_CATEGORY,
 ): FundCategoryAllocation[] {
   const shares = splitEqually(amount, categoryDefs.length);
@@ -109,53 +136,106 @@ export function buildFundCategoryAllocations(
       label: def.label,
       amount: shares[i],
       exampleSchemes: schemeNames.slice(0, examplesPerCategory),
+      group,
     };
   });
+}
+
+function buildStocksBucket(amount: number, candidates: Candidate[]): AllocationBucket {
+  const stocks = pickDiversifiedStocks(candidates, MAX_STOCKS, MAX_STOCKS_PER_SECTOR);
+  const shares = splitEqually(amount, stocks.length);
+  return {
+    bucket: "Stocks",
+    amount,
+    allocations: stocks.map((c, i) => ({
+      type: "stock" as const,
+      symbol: c.symbol,
+      name: c.name,
+      sector: c.sector,
+      amount: shares[i],
+    })),
+  };
+}
+
+function buildFundsBucket(
+  bucket: "Mutual Funds" | "ETFs",
+  amount: number,
+  equitySharePercent: number,
+  allSchemes: MutualFundScheme[],
+  equityCategories: FundCategoryDefinition[],
+  debtCategories: FundCategoryDefinition[],
+): AllocationBucket {
+  const [equityShare, debtShare] = splitByEquityShare(amount, equitySharePercent);
+  return {
+    bucket,
+    amount,
+    allocations: [
+      ...buildFundCategoryAllocations(equityShare, equityCategories, allSchemes, "Equity"),
+      ...buildFundCategoryAllocations(debtShare, debtCategories, allSchemes, "Debt"),
+    ],
+  };
 }
 
 export function buildAllocation(
   amount: number,
   profile: RiskProfileName,
+  scope: InstrumentScope,
   candidates: Candidate[],
   allSchemes: MutualFundScheme[],
-  equityCategories: FundCategoryDefinition[],
-  debtCategories: FundCategoryDefinition[],
+  equityFundCategories: FundCategoryDefinition[],
+  debtFundCategories: FundCategoryDefinition[],
+  equityEtfCategories: FundCategoryDefinition[],
+  debtEtfCategories: FundCategoryDefinition[],
 ): AllocationPlan {
   const weights = RISK_PROFILES[profile];
 
-  const stocksAmount = Math.round((amount * weights.stocksPercent) / 100);
-  const equityFundsAmount = Math.round((amount * weights.equityFundsPercent) / 100);
-  // Debt takes whatever's left so the three buckets always reconcile exactly to `amount`.
-  const debtFundsAmount = amount - stocksAmount - equityFundsAmount;
+  let stocksAmount = 0;
+  let mutualFundsAmount = 0;
+  let etfAmount = 0;
 
-  const stocks = pickDiversifiedStocks(candidates, MAX_STOCKS, MAX_STOCKS_PER_SECTOR);
-  const stockShares = splitEqually(stocksAmount, stocks.length);
-  const stockAllocations: StockAllocation[] = stocks.map((c, i) => ({
-    type: "stock" as const,
-    symbol: c.symbol,
-    name: c.name,
-    sector: c.sector,
-    amount: stockShares[i],
-  }));
+  if (scope === "StocksOnly") {
+    stocksAmount = amount;
+  } else if (scope === "MutualFundsOnly") {
+    mutualFundsAmount = amount;
+  } else if (scope === "EtfOnly") {
+    etfAmount = amount;
+  } else {
+    stocksAmount = Math.round((amount * weights.stocksPercent) / 100);
+    mutualFundsAmount = Math.round((amount * weights.mutualFundsPercent) / 100);
+    // ETF takes whatever's left so the three top-level amounts always
+    // reconcile exactly to `amount`, regardless of rounding above.
+    etfAmount = amount - stocksAmount - mutualFundsAmount;
+  }
 
-  const equityFundAllocations = buildFundCategoryAllocations(
-    equityFundsAmount,
-    equityCategories,
-    allSchemes,
-  );
-  const debtFundAllocations = buildFundCategoryAllocations(
-    debtFundsAmount,
-    debtCategories,
-    allSchemes,
-  );
+  const buckets: AllocationBucket[] = [];
 
-  return {
-    totalAmount: amount,
-    profile,
-    buckets: [
-      { bucket: "Stocks", amount: stocksAmount, allocations: stockAllocations },
-      { bucket: "Equity Funds", amount: equityFundsAmount, allocations: equityFundAllocations },
-      { bucket: "Debt Funds", amount: debtFundsAmount, allocations: debtFundAllocations },
-    ],
-  };
+  if (scope === "Mix" || scope === "StocksOnly") {
+    buckets.push(buildStocksBucket(stocksAmount, candidates));
+  }
+  if (scope === "Mix" || scope === "MutualFundsOnly") {
+    buckets.push(
+      buildFundsBucket(
+        "Mutual Funds",
+        mutualFundsAmount,
+        weights.equityShareWithinFunds,
+        allSchemes,
+        equityFundCategories,
+        debtFundCategories,
+      ),
+    );
+  }
+  if (scope === "Mix" || scope === "EtfOnly") {
+    buckets.push(
+      buildFundsBucket(
+        "ETFs",
+        etfAmount,
+        weights.equityShareWithinFunds,
+        allSchemes,
+        equityEtfCategories,
+        debtEtfCategories,
+      ),
+    );
+  }
+
+  return { totalAmount: amount, profile, scope, buckets };
 }

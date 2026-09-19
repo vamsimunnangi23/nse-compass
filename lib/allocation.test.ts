@@ -4,6 +4,7 @@ import {
   buildFundCategoryAllocations,
   pickDiversifiedStocks,
   RISK_PROFILES,
+  splitByEquityShare,
   splitEqually,
 } from "./allocation";
 import type { Candidate, FundCategoryDefinition, MutualFundScheme } from "./types";
@@ -67,12 +68,22 @@ describe("splitEqually", () => {
   });
 });
 
+describe("splitByEquityShare", () => {
+  it("splits into [equity, debt] that reconciles exactly", () => {
+    expect(splitByEquityShare(1000, 55)).toEqual([550, 450]);
+    expect(splitByEquityShare(1000, 33)).toEqual([330, 670]);
+  });
+
+  it("handles 0% and 100% equity share", () => {
+    expect(splitByEquityShare(500, 0)).toEqual([0, 500]);
+    expect(splitByEquityShare(500, 100)).toEqual([500, 0]);
+  });
+});
+
 describe("RISK_PROFILES", () => {
-  it("each profile's percentages sum to 100", () => {
+  it("each profile's top-level percentages (stocks/mutual funds/ETFs) sum to 100", () => {
     for (const weights of Object.values(RISK_PROFILES)) {
-      expect(weights.stocksPercent + weights.equityFundsPercent + weights.debtFundsPercent).toBe(
-        100,
-      );
+      expect(weights.stocksPercent + weights.mutualFundsPercent + weights.etfPercent).toBe(100);
     }
   });
 });
@@ -122,9 +133,10 @@ describe("buildFundCategoryAllocations", () => {
     { bucket: "Equity", label: "Mid Cap", amfiCategories: ["Equity Scheme - Mid Cap Fund"] },
   ];
 
-  it("splits the amount equally across categories and reconciles exactly", () => {
-    const allocations = buildFundCategoryAllocations(1000, categories, []);
+  it("splits the amount equally across categories, tags the group, and reconciles exactly", () => {
+    const allocations = buildFundCategoryAllocations(1000, categories, [], "Equity");
     expect(allocations.map((a) => a.amount)).toEqual([500, 500]);
+    expect(allocations.every((a) => a.group === "Equity")).toBe(true);
   });
 
   it("lists real, de-duplicated, alphabetically sorted scheme names per category", () => {
@@ -134,7 +146,7 @@ describe("buildFundCategoryAllocations", () => {
       scheme({ name: "Alpha Large Cap Fund", rawCategory: "Equity Scheme - Large Cap Fund" }), // duplicate share class
       scheme({ name: "Some Mid Cap Fund", rawCategory: "Equity Scheme - Mid Cap Fund" }),
     ];
-    const allocations = buildFundCategoryAllocations(1000, categories, schemes);
+    const allocations = buildFundCategoryAllocations(1000, categories, schemes, "Equity");
 
     const largeCap = allocations.find((a) => a.label === "Large Cap")!;
     expect(largeCap.exampleSchemes).toEqual(["Alpha Large Cap Fund", "Zed Large Cap Fund"]);
@@ -147,46 +159,104 @@ describe("buildFundCategoryAllocations", () => {
     const schemes = Array.from({ length: 10 }, (_, i) =>
       scheme({ name: `Fund ${i}`, rawCategory: "Equity Scheme - Large Cap Fund" }),
     );
-    const allocations = buildFundCategoryAllocations(1000, [categories[0]], schemes, 3);
+    const allocations = buildFundCategoryAllocations(1000, [categories[0]], schemes, "Equity", 3);
     expect(allocations[0].exampleSchemes).toHaveLength(3);
   });
 });
 
 describe("buildAllocation", () => {
-  it("splits the total into three buckets that reconcile exactly, per the chosen profile", () => {
-    const candidates = [candidate({ symbol: "A", sector: "IT", score: 90 })];
-    const plan = buildAllocation(10_000, "Balanced", candidates, [], [], []);
+  const equityFunds: FundCategoryDefinition[] = [
+    { bucket: "Equity", label: "Large Cap", amfiCategories: ["Equity Scheme - Large Cap Fund"] },
+  ];
+  const debtFunds: FundCategoryDefinition[] = [
+    { bucket: "Debt", label: "Liquid Fund", amfiCategories: ["Debt Scheme - Liquid Fund"] },
+  ];
+  const equityEtfs: FundCategoryDefinition[] = [
+    { bucket: "Equity", label: "Equity ETF", amfiCategories: ["ETF - Equity ETF"] },
+  ];
+  const debtEtfs: FundCategoryDefinition[] = [
+    { bucket: "Debt", label: "Gold ETF", amfiCategories: ["ETF - Gold ETF"] },
+  ];
 
-    // Balanced: 25% stocks, 35% equity funds, 40% debt funds
-    expect(plan.buckets.map((b) => b.amount)).toEqual([2500, 3500, 4000]);
+  it("Mix: splits into Stocks / Mutual Funds / ETFs per the profile, reconciling exactly", () => {
+    const plan = buildAllocation(10_000, "Balanced", "Mix", [], [], equityFunds, debtFunds, equityEtfs, debtEtfs);
+
+    // Balanced: 25% stocks, 45% mutual funds, 30% ETFs
+    expect(plan.buckets.map((b) => [b.bucket, b.amount])).toEqual([
+      ["Stocks", 2500],
+      ["Mutual Funds", 4500],
+      ["ETFs", 3000],
+    ]);
     expect(plan.buckets.reduce((sum, b) => sum + b.amount, 0)).toBe(10_000);
   });
 
-  it("reconciles exactly even when the percentages don't divide the amount evenly", () => {
-    // 10,003 doesn't split cleanly at 40/40/20 — exercises the rounding path.
-    const plan = buildAllocation(10_003, "Aggressive", [], [], [], []);
-    expect(plan.buckets.reduce((sum, b) => sum + b.amount, 0)).toBe(10_003);
+  it("Mix: splits each fund bucket into equity/debt using the profile's equityShareWithinFunds", () => {
+    const plan = buildAllocation(10_000, "Balanced", "Mix", [], [], equityFunds, debtFunds, equityEtfs, debtEtfs);
+    const mutualFunds = plan.buckets.find((b) => b.bucket === "Mutual Funds")!;
+
+    // Balanced equityShareWithinFunds = 55%; bucket amount = 4500
+    // equity = round(4500*0.55) = 2475, debt = 4500-2475 = 2025
+    const largeCap = mutualFunds.allocations.find((a) => a.type === "fundCategory" && a.label === "Large Cap");
+    const liquid = mutualFunds.allocations.find((a) => a.type === "fundCategory" && a.label === "Liquid Fund");
+    expect(largeCap).toMatchObject({ amount: 2475, group: "Equity" });
+    expect(liquid).toMatchObject({ amount: 2025, group: "Debt" });
   });
 
-  it("equal-weights the stocks bucket across the diversified picks", () => {
-    const candidates = [
-      candidate({ symbol: "A", sector: "IT", score: 90 }),
-      candidate({ symbol: "B", sector: "Pharma", score: 80 }),
-    ];
-    const plan = buildAllocation(1000, "Aggressive", candidates, [], [], []);
-    const stocksBucket = plan.buckets.find((b) => b.bucket === "Stocks")!;
+  it("StocksOnly: puts the entire amount into Stocks and no other bucket appears", () => {
+    const candidates = [candidate({ symbol: "A", sector: "IT", score: 90 })];
+    const plan = buildAllocation(
+      1000,
+      "Conservative",
+      "StocksOnly",
+      candidates,
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+    );
+    expect(plan.buckets).toHaveLength(1);
+    expect(plan.buckets[0]).toMatchObject({ bucket: "Stocks", amount: 1000 });
+  });
 
-    // Aggressive stocks bucket = 40% of 1000 = 400, split across 2 picks
-    expect(stocksBucket.amount).toBe(400);
-    expect(stocksBucket.allocations).toEqual([
-      { type: "stock", symbol: "A", name: "Test Co", sector: "IT", amount: 200 },
-      { type: "stock", symbol: "B", name: "Test Co", sector: "Pharma", amount: 200 },
+  it("MutualFundsOnly: puts the entire amount into Mutual Funds, split by equityShareWithinFunds", () => {
+    const plan = buildAllocation(
+      1000,
+      "Balanced",
+      "MutualFundsOnly",
+      [],
+      [],
+      equityFunds,
+      debtFunds,
+      equityEtfs,
+      debtEtfs,
+    );
+    expect(plan.buckets).toHaveLength(1);
+    expect(plan.buckets[0].bucket).toBe("Mutual Funds");
+    expect(plan.buckets[0].amount).toBe(1000);
+    // 55% equity of 1000 = 550, debt = 450
+    expect(plan.buckets[0].allocations).toEqual([
+      { type: "fundCategory", label: "Large Cap", amount: 550, exampleSchemes: [], group: "Equity" },
+      { type: "fundCategory", label: "Liquid Fund", amount: 450, exampleSchemes: [], group: "Debt" },
     ]);
   });
 
-  it("leaves a bucket's allocations empty (not fabricated) when nothing qualifies", () => {
-    const plan = buildAllocation(1000, "Balanced", [], [], [], []);
-    const stocksBucket = plan.buckets.find((b) => b.bucket === "Stocks")!;
-    expect(stocksBucket.allocations).toEqual([]);
+  it("EtfOnly: puts the entire amount into ETFs, split by equityShareWithinFunds", () => {
+    const plan = buildAllocation(1000, "Aggressive", "EtfOnly", [], [], equityFunds, debtFunds, equityEtfs, debtEtfs);
+    expect(plan.buckets).toHaveLength(1);
+    expect(plan.buckets[0].bucket).toBe("ETFs");
+    // Aggressive equityShareWithinFunds = 80%: equity=800, debt=200
+    expect(plan.buckets[0].allocations).toEqual([
+      { type: "fundCategory", label: "Equity ETF", amount: 800, exampleSchemes: [], group: "Equity" },
+      { type: "fundCategory", label: "Gold ETF", amount: 200, exampleSchemes: [], group: "Debt" },
+    ]);
+  });
+
+  it("reconciles exactly across every scope even when the amount doesn't divide cleanly", () => {
+    const scopes = ["Mix", "StocksOnly", "MutualFundsOnly", "EtfOnly"] as const;
+    for (const scope of scopes) {
+      const plan = buildAllocation(10_003, "Aggressive", scope, [], [], equityFunds, debtFunds, equityEtfs, debtEtfs);
+      expect(plan.buckets.reduce((sum, b) => sum + b.amount, 0)).toBe(10_003);
+    }
   });
 });

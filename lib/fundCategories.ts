@@ -58,3 +58,29 @@ export const DEBT_FUND_CATEGORIES: FundCategoryDefinition[] = [
     ],
   },
 ];
+
+/**
+ * ETFs trade on the exchange (via a demat account, like a stock) rather
+ * than through an AMC folio, so unlike the categories above there's no
+ * Direct/Regular or Growth/IDCW distinction — AMFI lists one row per fund.
+ */
+export const EQUITY_ETF_CATEGORIES: FundCategoryDefinition[] = [
+  {
+    bucket: "Equity",
+    label: "Equity ETF",
+    amfiCategories: ["Exchange Traded Funds (ETFs) - Equity ETF"],
+  },
+];
+
+export const DEBT_ETF_CATEGORIES: FundCategoryDefinition[] = [
+  {
+    bucket: "Debt",
+    label: "Debt ETF",
+    amfiCategories: ["Exchange Traded Funds (ETFs) - Debt ETF"],
+  },
+  {
+    bucket: "Debt",
+    label: "Gold ETF",
+    amfiCategories: ["Exchange Traded Funds (ETFs) - Gold ETF"],
+  },
+];

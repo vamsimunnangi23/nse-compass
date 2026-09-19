@@ -3,8 +3,13 @@ import { Suspense } from "react";
 import { DisclaimerBanner, ErrorBanner } from "@/components/Banners";
 import { attempt } from "@/lib/attempt";
 import { buildAllocation, RISK_PROFILES } from "@/lib/allocation";
-import type { AllocationPlan, RiskProfileName } from "@/lib/allocation";
-import { DEBT_FUND_CATEGORIES, EQUITY_FUND_CATEGORIES } from "@/lib/fundCategories";
+import type { AllocationPlan, InstrumentScope, RiskProfileName } from "@/lib/allocation";
+import {
+  DEBT_ETF_CATEGORIES,
+  DEBT_FUND_CATEGORIES,
+  EQUITY_ETF_CATEGORIES,
+  EQUITY_FUND_CATEGORIES,
+} from "@/lib/fundCategories";
 import { getAllCandidates } from "@/lib/marketData";
 import { getAllSchemes } from "@/lib/mutualFunds";
 
@@ -13,6 +18,14 @@ export const maxDuration = 60;
 export const metadata = { title: "Diversify — NSE Compass" };
 
 const PROFILE_NAMES = Object.keys(RISK_PROFILES) as RiskProfileName[];
+
+const SCOPE_OPTIONS: { value: InstrumentScope; label: string }[] = [
+  { value: "Mix", label: "Mix (Stocks + Mutual Funds + ETFs)" },
+  { value: "StocksOnly", label: "Stocks only" },
+  { value: "MutualFundsOnly", label: "Mutual Funds only" },
+  { value: "EtfOnly", label: "ETFs only" },
+];
+const SCOPE_VALUES = SCOPE_OPTIONS.map((o) => o.value);
 
 function parseAmount(raw: string | undefined): number | null {
   if (!raw) return null;
@@ -25,6 +38,10 @@ function isRiskProfile(value: string | undefined): value is RiskProfileName {
   return !!value && (PROFILE_NAMES as string[]).includes(value);
 }
 
+function isInstrumentScope(value: string | undefined): value is InstrumentScope {
+  return !!value && (SCOPE_VALUES as string[]).includes(value);
+}
+
 function symbolSlug(symbol: string): string {
   return encodeURIComponent(symbol.replace(/\.NS$/, ""));
 }
@@ -33,16 +50,27 @@ function formatRupees(n: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-async function Results({ amount, profile }: { amount: number; profile: RiskProfileName }) {
+async function Results({
+  amount,
+  profile,
+  scope,
+}: {
+  amount: number;
+  profile: RiskProfileName;
+  scope: InstrumentScope;
+}) {
   const result = await attempt(async () => {
     const [candidates, schemes] = await Promise.all([getAllCandidates(), getAllSchemes()]);
     return buildAllocation(
       amount,
       profile,
+      scope,
       candidates,
       schemes,
       EQUITY_FUND_CATEGORIES,
       DEBT_FUND_CATEGORIES,
+      EQUITY_ETF_CATEGORIES,
+      DEBT_ETF_CATEGORIES,
     );
   });
 
@@ -53,50 +81,90 @@ async function Results({ amount, profile }: { amount: number; profile: RiskProfi
 function AllocationResult({ plan }: { plan: AllocationPlan }) {
   return (
     <div className="flex flex-col gap-6">
-      {plan.buckets.map((bucket) => (
-        <div key={bucket.bucket} className="rounded-xl border border-border bg-surface p-5">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">{bucket.bucket}</h3>
-            <p className="text-lg font-bold tabular-nums">{formatRupees(bucket.amount)}</p>
-          </div>
+      {plan.buckets.map((bucket) => {
+        const equityAllocations = bucket.allocations.filter(
+          (a) => a.type === "fundCategory" && a.group === "Equity",
+        );
+        const debtAllocations = bucket.allocations.filter(
+          (a) => a.type === "fundCategory" && a.group === "Debt",
+        );
+        const stockAllocations = bucket.allocations.filter((a) => a.type === "stock");
 
-          {bucket.allocations.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">
-              {bucket.bucket === "Stocks"
-                ? "No tracked stock currently scores Watch or better — this bucket has no picks right now."
-                : "No matching fund data available right now."}
-            </p>
-          ) : (
-            <ul className="mt-3 flex flex-col gap-3">
-              {bucket.allocations.map((a) =>
-                a.type === "stock" ? (
-                  <li key={a.symbol} className="flex items-center justify-between text-sm">
-                    <Link
-                      href={`/stocks/${symbolSlug(a.symbol)}`}
-                      className="font-medium hover:text-accent transition-colors"
-                    >
-                      {a.name} <span className="text-muted">· {a.sector}</span>
-                    </Link>
-                    <span className="tabular-nums font-medium">{formatRupees(a.amount)}</span>
-                  </li>
-                ) : (
-                  <li key={a.label} className="text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{a.label}</span>
-                      <span className="tabular-nums font-medium">{formatRupees(a.amount)}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted">
-                      {a.exampleSchemes.length > 0
-                        ? `Examples (Direct Growth, not a recommendation): ${a.exampleSchemes.join(", ")}`
-                        : "No current Direct Growth schemes found in this category."}
-                    </p>
-                  </li>
-                ),
-              )}
-            </ul>
-          )}
-        </div>
-      ))}
+        return (
+          <div key={bucket.bucket} className="rounded-xl border border-border bg-surface p-5">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-lg font-semibold">{bucket.bucket}</h3>
+              <p className="text-lg font-bold tabular-nums">{formatRupees(bucket.amount)}</p>
+            </div>
+
+            {bucket.allocations.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">
+                {bucket.bucket === "Stocks"
+                  ? "No tracked stock currently scores Watch or better — this bucket has no picks right now."
+                  : "No matching fund data available right now."}
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-4">
+                {stockAllocations.length > 0 && (
+                  <ul className="flex flex-col gap-3">
+                    {stockAllocations.map((a) => {
+                      if (a.type !== "stock") return null;
+                      return (
+                        <li key={a.symbol} className="flex items-center justify-between text-sm">
+                          <Link
+                            href={`/stocks/${symbolSlug(a.symbol)}`}
+                            className="font-medium hover:text-accent transition-colors"
+                          >
+                            {a.name} <span className="text-muted">· {a.sector}</span>
+                          </Link>
+                          <span className="tabular-nums font-medium">{formatRupees(a.amount)}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {equityAllocations.length > 0 && (
+                  <FundGroup title="Equity" allocations={equityAllocations} />
+                )}
+                {debtAllocations.length > 0 && <FundGroup title="Debt" allocations={debtAllocations} />}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FundGroup({
+  title,
+  allocations,
+}: {
+  title: string;
+  allocations: AllocationPlan["buckets"][number]["allocations"];
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">{title}</p>
+      <ul className="mt-2 flex flex-col gap-3">
+        {allocations.map((a) => {
+          if (a.type !== "fundCategory") return null;
+          return (
+            <li key={a.label} className="text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{a.label}</span>
+                <span className="tabular-nums font-medium">{formatRupees(a.amount)}</span>
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                {a.exampleSchemes.length > 0
+                  ? `Examples (not a recommendation): ${a.exampleSchemes.join(", ")}`
+                  : "No current schemes found in this category."}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -104,30 +172,32 @@ function AllocationResult({ plan }: { plan: AllocationPlan }) {
 export default async function DiversifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ amount?: string; profile?: string }>;
+  searchParams: Promise<{ amount?: string; profile?: string; scope?: string }>;
 }) {
   const params = await searchParams;
   const amount = parseAmount(params.amount);
   const invalidAmount = params.amount !== undefined && amount === null;
   const profile: RiskProfileName = isRiskProfile(params.profile) ? params.profile : "Balanced";
+  const scope: InstrumentScope = isInstrumentScope(params.scope) ? params.scope : "Mix";
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <h1 className="font-serif text-3xl sm:text-4xl">Diversify</h1>
       <p className="mt-2 text-muted">
-        Enter an amount and pick a risk profile yourself — this tool splits it across the
-        tracked stocks and mutual fund categories using simple, disclosed rules. It does not
-        know your goals, age, taxes, or existing holdings, and it never picks a &ldquo;best&rdquo;
-        mutual fund scheme for you.
+        Enter an amount, pick what to invest in, and pick a risk profile yourself — this tool
+        splits it using simple, disclosed rules. It does not know your goals, age, taxes, or
+        existing holdings, and it never picks a &ldquo;best&rdquo; mutual fund or ETF scheme for
+        you.
       </p>
 
       <div className="mt-6 flex flex-col gap-3">
         <DisclaimerBanner />
         <div className="rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning">
           This performs arithmetic on presets you choose — it is not an assessment of your
-          financial situation. Mutual fund categories show real, current example scheme names
-          from public AMFI data, never ranked by past performance. Always check the fund&apos;s
-          own factsheet before investing.
+          financial situation. Mutual fund and ETF categories show real, current example scheme
+          names from public AMFI data, never ranked by past performance. Always check the
+          fund&apos;s own factsheet before investing, and note that ETFs are bought and sold on
+          the exchange like a stock, not through a fund house application.
         </div>
       </div>
 
@@ -145,15 +215,29 @@ export default async function DiversifyPage({
             defaultValue={amount ?? ""}
             placeholder="e.g. 100000"
             required
-            className="w-48 rounded-lg border border-border bg-background px-3 py-2"
+            className="w-44 rounded-lg border border-border bg-background px-3 py-2"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted">Invest in</span>
+          <select
+            name="scope"
+            defaultValue={scope}
+            className="w-56 rounded-lg border border-border bg-background px-3 py-2"
+          >
+            {SCOPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted">Risk profile</span>
           <select
             name="profile"
             defaultValue={profile}
-            className="w-48 rounded-lg border border-border bg-background px-3 py-2"
+            className="w-40 rounded-lg border border-border bg-background px-3 py-2"
           >
             {PROFILE_NAMES.map((name) => (
               <option key={name} value={name}>
@@ -170,6 +254,13 @@ export default async function DiversifyPage({
         </button>
       </form>
 
+      {scope !== "StocksOnly" && (
+        <p className="mt-2 text-xs text-muted">
+          Risk profile only affects the equity/debt split within Mutual Funds and ETFs
+          {scope === "Mix" ? " (and how much goes to Stocks vs. funds vs. ETFs)" : ""}.
+        </p>
+      )}
+
       {invalidAmount && (
         <p className="mt-3 text-sm text-danger">Enter a valid amount greater than zero.</p>
       )}
@@ -181,7 +272,7 @@ export default async function DiversifyPage({
               <div className="h-40 animate-pulse rounded-xl border border-border bg-surface" />
             }
           >
-            <Results amount={amount} profile={profile} />
+            <Results amount={amount} profile={profile} scope={scope} />
           </Suspense>
         </div>
       )}

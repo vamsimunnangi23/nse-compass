@@ -33,6 +33,12 @@ Close Ended Schemes(Income)
 Some Fund House
 
 100009;INF009;-;Some Closed Term Plan;Direct Plan;Growth;10.0000;18-Sep-2026
+
+Open Ended Schemes(Exchange Traded Funds (ETFs) - Equity ETF)
+
+Aditya Birla Sun Life Mutual Fund
+
+100010;INF010;-;Aditya Birla Sun Life BSE Sensex ETF;;;74.9932;18-Sep-2026
 `;
 
 const NOW = new Date("2026-09-19T00:00:00.000Z");
@@ -79,6 +85,14 @@ describe("parseNavAllText", () => {
     const icici = schemes.find((s) => s.name === "ICICI Prudential Liquid Fund")!;
     expect(icici.rawCategory).toBe("Debt Scheme - Liquid Fund");
     expect(icici.amc).toBe("ICICI Prudential Mutual Fund");
+  });
+
+  it("includes ETF rows even though their Plan and Option fields are blank", () => {
+    const schemes = parseNavAllText(SAMPLE, NOW);
+    const etf = schemes.find((s) => s.name === "Aditya Birla Sun Life BSE Sensex ETF");
+    expect(etf).toBeDefined();
+    expect(etf?.rawCategory).toBe("Exchange Traded Funds (ETFs) - Equity ETF");
+    expect(etf?.nav).toBe(74.9932);
   });
 
   it("returns an empty array for empty or unrecognized input without throwing", () => {

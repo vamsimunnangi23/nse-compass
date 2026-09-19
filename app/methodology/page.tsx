@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { MAX_STOCKS, MAX_STOCKS_PER_SECTOR, RISK_PROFILES } from "@/lib/allocation";
 import type { RiskProfileName } from "@/lib/allocation";
-import { DEBT_FUND_CATEGORIES, EQUITY_FUND_CATEGORIES } from "@/lib/fundCategories";
+import {
+  DEBT_ETF_CATEGORIES,
+  DEBT_FUND_CATEGORIES,
+  EQUITY_ETF_CATEGORIES,
+  EQUITY_FUND_CATEGORIES,
+} from "@/lib/fundCategories";
 import {
   MARKET_HEADWIND_PENALTY,
   RISK_THRESHOLDS,
@@ -121,9 +126,15 @@ export default function MethodologyPage() {
           <Link href="/diversify" className="text-accent hover:underline">
             Diversify
           </Link>{" "}
-          page splits an amount you enter across Stocks, Equity Funds, and
-          Debt Funds using a risk profile <em>you</em> pick — the app never
-          infers your risk tolerance, goals, age, or tax situation:
+          page splits an amount you enter across three instrument types —
+          Stocks, Mutual Funds, and ETFs — or, if you&apos;d rather, puts
+          the whole amount into just one of those. Either way, a risk
+          profile <em>you</em> pick decides the split; the app never infers
+          your risk tolerance, goals, age, or tax situation.
+        </p>
+        <p className="mt-3 text-muted">
+          When investing in a mix of all three, each profile sets the
+          top-level split:
         </p>
         <ul className="mt-3 flex flex-col gap-1 text-muted">
           {(Object.keys(RISK_PROFILES) as RiskProfileName[]).map((name) => {
@@ -131,24 +142,41 @@ export default function MethodologyPage() {
             return (
               <li key={name}>
                 <span className="font-semibold text-foreground">{name}</span> —{" "}
-                {weights.stocksPercent}% stocks / {weights.equityFundsPercent}% equity funds /{" "}
-                {weights.debtFundsPercent}% debt funds
+                {weights.stocksPercent}% stocks / {weights.mutualFundsPercent}% mutual funds /{" "}
+                {weights.etfPercent}% ETFs
               </li>
             );
           })}
         </ul>
         <p className="mt-3 text-muted">
+          The same profile also decides the equity/debt split{" "}
+          <em>within</em> the Mutual Funds and ETF buckets (or the whole
+          amount, if you picked one of those instrument types only) — e.g.
+          Balanced puts {RISK_PROFILES.Balanced.equityShareWithinFunds}% of
+          that money into equity-type categories and the rest into debt-type
+          categories.
+        </p>
+        <p className="mt-3 text-muted">
           The stocks bucket is split equally across the top {MAX_STOCKS} tracked
           stocks scoring Watch or better, capped at {MAX_STOCKS_PER_SECTOR} per
-          sector so picks aren&apos;t clustered in one industry. The fund
-          buckets are split equally across a curated set of categories
-          (Equity: {EQUITY_FUND_CATEGORIES.map((c) => c.label).join(", ")};
-          Debt: {DEBT_FUND_CATEGORIES.map((c) => c.label).join(", ")}), each
-          showing a few real Direct-Growth scheme names from India&apos;s
+          sector so picks aren&apos;t clustered in one industry. The fund and
+          ETF buckets are each split equally across a curated set of
+          categories (Mutual Fund Equity:{" "}
+          {EQUITY_FUND_CATEGORIES.map((c) => c.label).join(", ")}; Mutual
+          Fund Debt: {DEBT_FUND_CATEGORIES.map((c) => c.label).join(", ")};
+          ETF Equity: {EQUITY_ETF_CATEGORIES.map((c) => c.label).join(", ")};
+          ETF Debt: {DEBT_ETF_CATEGORIES.map((c) => c.label).join(", ")}),
+          each showing a few real current scheme names from India&apos;s
           public AMFI data as examples — <strong>never ranked or picked as
           &ldquo;best,&rdquo;</strong> since past fund returns are weak evidence
           and picking individual schemes edges into regulated investment-advisory
           territory this app doesn&apos;t claim to offer.
+        </p>
+        <p className="mt-3 text-muted">
+          One factual note: ETFs are bought and sold on the exchange like a
+          stock (via a demat account), not through a fund house application
+          the way traditional mutual funds are — which is also why AMFI&apos;s
+          data has no Direct/Regular plan distinction for them.
         </p>
       </section>
 

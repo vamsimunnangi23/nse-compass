@@ -31,11 +31,18 @@ function parseAmfiDate(raw: string): Date | null {
 
 const SECTION_HEADER = /^(Open Ended Schemes|Close Ended Schemes|Interval Fund Schemes)\((.+)\)$/;
 
+const ETF_SECTION_PREFIX = "exchange traded funds";
+
 /**
  * Parses AMFI's NAVAll.txt into usable schemes: Open Ended only (Close
- * Ended / Interval funds aren't purchasable anytime), Direct plan, Growth
- * option only (excludes every IDCW/dividend variant), and a recent NAV date
+ * Ended / Interval funds aren't purchasable anytime), and a recent NAV date
  * (the file mixes in stale/inactive scheme rows alongside live ones).
+ *
+ * Traditional mutual funds are further filtered to Direct plan, Growth
+ * option only (excludes every IDCW/dividend variant). ETFs skip that
+ * filter entirely — they have no Direct/Regular or Growth/IDCW distinction
+ * in the file at all (both fields are blank), since they trade on the
+ * exchange rather than through an AMC folio.
  *
  * Pure and network-free so it can be unit tested against a fixed sample —
  * see lib/mutualFunds.test.ts.
@@ -71,8 +78,11 @@ export function parseNavAllText(text: string, now: Date = new Date()): MutualFun
 
     const [schemeCode, , , schemeName, plan, option, navRaw, dateRaw] = fields;
 
-    if (!plan.toLowerCase().includes("direct")) continue;
-    if (!option.toLowerCase().includes("growth")) continue;
+    const isEtf = currentCategory.toLowerCase().startsWith(ETF_SECTION_PREFIX);
+    if (!isEtf) {
+      if (!plan.toLowerCase().includes("direct")) continue;
+      if (!option.toLowerCase().includes("growth")) continue;
+    }
 
     const nav = Number(navRaw);
     if (!Number.isFinite(nav) || nav <= 0) continue;
