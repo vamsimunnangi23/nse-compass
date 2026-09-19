@@ -6,6 +6,7 @@ import { attempt } from "@/lib/attempt";
 import { getAllCandidates } from "@/lib/marketData";
 
 export const revalidate = 0;
+export const maxDuration = 60;
 export const metadata = { title: "Top Picks — NSE Compass" };
 
 async function Picks() {

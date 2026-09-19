@@ -8,6 +8,7 @@ import { getMarketSnapshot } from "@/lib/marketData";
 import type { TrendState } from "@/lib/types";
 
 export const revalidate = 0;
+export const maxDuration = 60;
 export const metadata = { title: "Market — NSE Compass" };
 
 const TREND_COPY: Record<TrendState, string> = {

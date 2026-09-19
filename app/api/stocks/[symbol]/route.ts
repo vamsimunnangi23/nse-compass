@@ -1,6 +1,8 @@
 import { fail, ok } from "@/lib/apiResult";
 import { getCandidate, getStockBars } from "@/lib/marketData";
 
+export const maxDuration = 60;
+
 function toYahooSymbol(raw: string): string {
   const upper = decodeURIComponent(raw).toUpperCase();
   return upper.endsWith(".NS") ? upper : `${upper}.NS`;

@@ -8,6 +8,7 @@ import { attempt } from "@/lib/attempt";
 import { getAllCandidates, getIndexSnapshot } from "@/lib/marketData";
 
 export const revalidate = 0;
+export const maxDuration = 60;
 
 async function IndexCardLoader() {
   const result = await attempt(getIndexSnapshot);
