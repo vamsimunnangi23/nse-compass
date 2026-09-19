@@ -3,7 +3,7 @@ import type { OhlcvBar } from "./types";
 
 const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
-const HISTORY_DAYS = 220; // calendar days of buffer to get 100+ trading sessions
+const HISTORY_DAYS = 400; // calendar days of buffer to safely cover a trailing 52-week (252 trading day) window
 
 function daysAgo(days: number): Date {
   const d = new Date();

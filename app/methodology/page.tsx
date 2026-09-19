@@ -4,6 +4,7 @@ import {
   RISK_THRESHOLDS,
   SCORE_WEIGHTS,
   SIGNAL_THRESHOLDS,
+  YEAR_RANGE_THRESHOLDS,
 } from "@/lib/scoring";
 
 export const metadata = { title: "Methodology — NSE Compass" };
@@ -30,7 +31,7 @@ export default function MethodologyPage() {
       <section className="mt-8">
         <h2 className="text-xl font-semibold">The score</h2>
         <p className="mt-2 text-muted">
-          Each stock gets a 0–100 score from three weighted sub-scores:
+          Each stock gets a 0–100 score from four weighted sub-scores:
         </p>
         <ul className="mt-3 flex flex-col gap-1 text-muted">
           <li>
@@ -50,6 +51,15 @@ export default function MethodologyPage() {
               Volume — {Math.round(SCORE_WEIGHTS.volume * 100)}%
             </span>{" "}
             of the score: latest volume vs. its 20-day average.
+          </li>
+          <li>
+            <span className="font-semibold text-foreground">
+              52-week range — {Math.round(SCORE_WEIGHTS.yearRange * 100)}%
+            </span>{" "}
+            of the score: how close the price is to its 52-week high vs. low.
+            Within {YEAR_RANGE_THRESHOLDS.nearHighPercent}% of the high scores
+            highest; within {YEAR_RANGE_THRESHOLDS.nearLowPercent}% of the low
+            scores lowest.
           </li>
         </ul>
         <p className="mt-3 text-muted">

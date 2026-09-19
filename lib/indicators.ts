@@ -56,6 +56,20 @@ export function atr(bars: OhlcvBar[], period = 14): number {
   return sma(trueRanges, period);
 }
 
+const FIFTY_TWO_WEEK_TRADING_DAYS = 252;
+
+/**
+ * High/low over the trailing ~52 weeks of trading sessions. Degrades
+ * gracefully to whatever history is available (e.g. a recently listed
+ * stock) rather than requiring a full year of data.
+ */
+export function fiftyTwoWeekRange(bars: OhlcvBar[]): { high: number; low: number } {
+  const window = bars.slice(-FIFTY_TWO_WEEK_TRADING_DAYS);
+  const high = Math.max(...window.map((b) => b.high));
+  const low = Math.min(...window.map((b) => b.low));
+  return { high, low };
+}
+
 export function computeIndicators(bars: OhlcvBar[]): Indicators | null {
   if (bars.length < 51) return null;
 
@@ -63,6 +77,7 @@ export function computeIndicators(bars: OhlcvBar[]): Indicators | null {
   const volumes = bars.map((b) => b.volume);
   const price = closes[closes.length - 1];
   const atr14 = atr(bars, 14);
+  const { high: week52High, low: week52Low } = fiftyTwoWeekRange(bars);
 
   return {
     price,
@@ -75,5 +90,7 @@ export function computeIndicators(bars: OhlcvBar[]): Indicators | null {
     volumeRatio: volumes[volumes.length - 1] / averageVolume(volumes, 20),
     atr14,
     atrPercent: (atr14 / price) * 100,
+    week52High,
+    week52Low,
   };
 }

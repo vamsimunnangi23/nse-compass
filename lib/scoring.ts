@@ -5,9 +5,16 @@ import type { Indicators, RiskTier, Signal, TrendState } from "./types";
  * directly so the UI can never drift from what's disclosed to users.
  */
 export const SCORE_WEIGHTS = {
-  trend: 0.4,
-  momentum: 0.35,
-  volume: 0.25,
+  trend: 0.35,
+  momentum: 0.3,
+  volume: 0.2,
+  yearRange: 0.15,
+} as const;
+
+export const YEAR_RANGE_THRESHOLDS = {
+  nearHighPercent: 5, // within this % of the 52-week high
+  nearLowPercent: 5, // within this % of the 52-week low
+  moderatelyOffHighPercent: 20,
 } as const;
 
 export const MARKET_HEADWIND_PENALTY = 8; // points subtracted when NIFTY 50 is in a downtrend
@@ -103,6 +110,33 @@ function scoreVolume(ind: Indicators): SubScoreResult {
   return { score: clamp(score), reasons };
 }
 
+function scoreYearRange(ind: Indicators): SubScoreResult {
+  const { price, week52High, week52Low } = ind;
+  const reasons: string[] = [];
+
+  const pctOffHigh = week52High > 0 ? ((week52High - price) / week52High) * 100 : 0;
+  const pctAboveLow = week52Low > 0 ? ((price - week52Low) / week52Low) * 100 : 0;
+
+  let score: number;
+  if (pctOffHigh <= YEAR_RANGE_THRESHOLDS.nearHighPercent) {
+    score = 90;
+    reasons.push(`Within ${YEAR_RANGE_THRESHOLDS.nearHighPercent}% of its 52-week high`);
+  } else if (pctAboveLow <= YEAR_RANGE_THRESHOLDS.nearLowPercent) {
+    score = 15;
+    reasons.push(`Within ${YEAR_RANGE_THRESHOLDS.nearLowPercent}% of its 52-week low`);
+  } else if (pctOffHigh <= YEAR_RANGE_THRESHOLDS.moderatelyOffHighPercent) {
+    score = 60;
+    reasons.push(`${pctOffHigh.toFixed(1)}% below its 52-week high`);
+  } else {
+    score = 40;
+    reasons.push(
+      `${pctOffHigh.toFixed(1)}% below its 52-week high, ${pctAboveLow.toFixed(1)}% above its 52-week low`,
+    );
+  }
+
+  return { score: clamp(score), reasons };
+}
+
 function riskTierFromAtrPercent(atrPercent: number): RiskTier {
   if (atrPercent <= RISK_THRESHOLDS.lowMaxAtrPercent) return "Low";
   if (atrPercent <= RISK_THRESHOLDS.mediumMaxAtrPercent) return "Medium";
@@ -131,13 +165,15 @@ export function scoreCandidate(ind: Indicators, marketTrend: TrendState): ScoreR
   const trend = scoreTrend(ind);
   const momentum = scoreMomentum(ind);
   const volume = scoreVolume(ind);
+  const yearRange = scoreYearRange(ind);
 
   let score =
     trend.score * SCORE_WEIGHTS.trend +
     momentum.score * SCORE_WEIGHTS.momentum +
-    volume.score * SCORE_WEIGHTS.volume;
+    volume.score * SCORE_WEIGHTS.volume +
+    yearRange.score * SCORE_WEIGHTS.yearRange;
 
-  const reasons = [...trend.reasons, ...momentum.reasons, ...volume.reasons];
+  const reasons = [...trend.reasons, ...momentum.reasons, ...volume.reasons, ...yearRange.reasons];
 
   if (marketTrend === "Downtrend") {
     score -= MARKET_HEADWIND_PENALTY;

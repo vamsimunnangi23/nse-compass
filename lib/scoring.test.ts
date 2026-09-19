@@ -14,13 +14,17 @@ function indicators(overrides: Partial<Indicators> = {}): Indicators {
     volumeRatio: 1,
     atr14: 1,
     atrPercent: 1,
+    week52High: 120,
+    week52Low: 80,
     ...overrides,
   };
 }
 
 describe("SCORE_WEIGHTS", () => {
-  it("sums to 1, matching the 40/35/25 split disclosed on the methodology page", () => {
-    expect(SCORE_WEIGHTS.trend + SCORE_WEIGHTS.momentum + SCORE_WEIGHTS.volume).toBeCloseTo(1, 10);
+  it("sums to 1, matching the 35/30/20/15 split disclosed on the methodology page", () => {
+    expect(
+      SCORE_WEIGHTS.trend + SCORE_WEIGHTS.momentum + SCORE_WEIGHTS.volume + SCORE_WEIGHTS.yearRange,
+    ).toBeCloseTo(1, 10);
   });
 });
 
@@ -34,6 +38,7 @@ describe("scoreCandidate", () => {
       roc10: 5,
       volumeRatio: 1.6,
       atrPercent: 1.0,
+      // pctOffHigh = (120-110)/120*100 = 8.33% -> the "moderately off high" tier
     });
 
     const result = scoreCandidate(ind, "Uptrend");
@@ -41,8 +46,9 @@ describe("scoreCandidate", () => {
     // trend: above both averages (+25) and sma20>sma50 (+15) -> 90
     // momentum: rsi in [50,70] (+25) and roc10>0 (+15) -> 90
     // volume: ratio >= 1.5 -> 90
-    // weighted = 90*0.4 + 90*0.35 + 90*0.25 = 90, no penalty (uptrend)
-    expect(result.score).toBe(90);
+    // yearRange: 8.33% off the 52-week high -> 60
+    // weighted = 90*0.35 + 90*0.30 + 90*0.20 + 60*0.15 = 31.5+27+18+9 = 85.5 -> rounds to 86
+    expect(result.score).toBe(86);
     expect(result.signal).toBe("Bullish");
     expect(result.riskTier).toBe("Low");
     expect(result.reasons).toContain("NIFTY 50 is in an uptrend — a supportive backdrop");
@@ -57,6 +63,7 @@ describe("scoreCandidate", () => {
       roc10: -5,
       volumeRatio: 0.8,
       atrPercent: 2.5,
+      // pctOffHigh = (120-90)/120*100 = 25% -> the "far from high" tier
     });
 
     const result = scoreCandidate(ind, "Downtrend");
@@ -64,9 +71,10 @@ describe("scoreCandidate", () => {
     // trend: below both averages (-25) and sma20<sma50 (-15) -> 10
     // momentum: rsi<30 (-15) and roc10<=0 (-15) -> 20
     // volume: ratio < 1.0 -> 35
-    // weighted = 10*0.4 + 20*0.35 + 35*0.25 = 4 + 7 + 8.75 = 19.75
-    // minus the 8-point downtrend headwind penalty = 11.75 -> rounds to 12
-    expect(result.score).toBe(12);
+    // yearRange: 25% below the 52-week high, not near the low -> 40
+    // weighted = 10*0.35 + 20*0.30 + 35*0.20 + 40*0.15 = 3.5+6+7+6 = 22.5
+    // minus the 8-point downtrend headwind penalty = 14.5 -> rounds to 15
+    expect(result.score).toBe(15);
     expect(result.signal).toBe("Caution");
     expect(result.riskTier).toBe("Medium");
     expect(result.reasons).toContain(
@@ -83,6 +91,7 @@ describe("scoreCandidate", () => {
       roc10: 3,
       volumeRatio: 1.2,
       atrPercent: 1.8,
+      // pctOffHigh = (120-101)/120*100 = 15.83% -> the "moderately off high" tier
     });
 
     const result = scoreCandidate(ind, "Sideways");
@@ -90,10 +99,41 @@ describe("scoreCandidate", () => {
     // trend: mixed (no ±25) and sma20<sma50 (-15) -> 35
     // momentum: rsi>70 (+5) and roc10>0 (+15) -> 70
     // volume: 1.0 <= ratio < 1.5 -> 65
-    // weighted = 35*0.4 + 70*0.35 + 65*0.25 = 14 + 24.5 + 16.25 = 54.75 -> rounds to 55
+    // yearRange: 15.83% off the 52-week high -> 60
+    // weighted = 35*0.35 + 70*0.30 + 65*0.20 + 60*0.15 = 12.25+21+13+9 = 55.25 -> rounds to 55
     expect(result.score).toBe(55);
     expect(result.signal).toBe("Watch");
     expect(result.riskTier).toBe("Low");
+  });
+
+  it("rewards a price within 5% of its 52-week high", () => {
+    const ind = indicators({ week52High: 105, week52Low: 60 });
+    // price=100 (default): pctOffHigh = (105-100)/105*100 = 4.76% -> "near high" tier (90)
+
+    const result = scoreCandidate(ind, "Sideways");
+
+    // trend: price==sma20==sma50 -> mixed (50), sma20==sma50 -> else branch (-15) -> 35
+    // momentum: rsi=50 in [50,70] (+25), roc=0 not >0 (-15) -> 60
+    // volume: ratio==1 -> 65
+    // yearRange: within 5% of the 52-week high -> 90
+    // weighted = 35*0.35 + 60*0.30 + 65*0.20 + 90*0.15 = 12.25+18+13+13.5 = 56.75 -> rounds to 57
+    expect(result.score).toBe(57);
+    expect(result.signal).toBe("Watch");
+    expect(result.reasons).toContain("Within 5% of its 52-week high");
+  });
+
+  it("penalizes a price within 5% of its 52-week low", () => {
+    const ind = indicators({ week52High: 150, week52Low: 98 });
+    // price=100 (default): pctAboveLow = (100-98)/98*100 = 2.04% -> "near low" tier (15)
+
+    const result = scoreCandidate(ind, "Sideways");
+
+    // Same trend/momentum/volume sub-scores as the near-high case above (35/60/65).
+    // yearRange: within 5% of the 52-week low -> 15
+    // weighted = 35*0.35 + 60*0.30 + 65*0.20 + 15*0.15 = 12.25+18+13+2.25 = 45.5 -> rounds to 46
+    expect(result.score).toBe(46);
+    expect(result.signal).toBe("Neutral");
+    expect(result.reasons).toContain("Within 5% of its 52-week low");
   });
 
   it("never scores outside the documented 0-100 range", () => {
@@ -104,6 +144,8 @@ describe("scoreCandidate", () => {
       rsi14: 5,
       roc10: -20,
       volumeRatio: 0.1,
+      week52High: 200,
+      week52Low: 49,
     });
     const best = indicators({
       price: 200,
@@ -112,6 +154,8 @@ describe("scoreCandidate", () => {
       rsi14: 60,
       roc10: 20,
       volumeRatio: 3,
+      week52High: 200,
+      week52Low: 100,
     });
 
     expect(scoreCandidate(worst, "Downtrend").score).toBeGreaterThanOrEqual(0);

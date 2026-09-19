@@ -112,6 +112,7 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
               </th>
               {advanced && <th className="px-4 py-3 font-medium">RSI (14)</th>}
               {advanced && <th className="px-4 py-3 font-medium">Vol vs 20d avg</th>}
+              {advanced && <th className="px-4 py-3 font-medium">Off 52W high</th>}
             </tr>
           </thead>
           <tbody>
@@ -154,6 +155,15 @@ export function CandidateTable({ candidates }: { candidates: Candidate[] }) {
                   {advanced && (
                     <td className="px-4 py-3 tabular-nums">
                       {c.indicators.volumeRatio.toFixed(2)}x
+                    </td>
+                  )}
+                  {advanced && (
+                    <td className="px-4 py-3 tabular-nums">
+                      {(
+                        ((c.indicators.week52High - c.price) / c.indicators.week52High) *
+                        100
+                      ).toFixed(1)}
+                      %
                     </td>
                   )}
                 </tr>

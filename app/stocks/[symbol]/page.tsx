@@ -79,7 +79,7 @@ export default async function StockDetailPage({
       </div>
 
       <div className="mt-6">
-        <PriceChart bars={bars} name={candidate.name} />
+        <PriceChart bars={bars.slice(-90)} name={candidate.name} />
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -97,6 +97,18 @@ export default async function StockDetailPage({
         <Stat
           label="ATR (14)"
           value={`${candidate.indicators.atrPercent.toFixed(1)}% of price`}
+        />
+        <Stat
+          label="52-week high"
+          value={candidate.indicators.week52High.toLocaleString("en-IN", {
+            maximumFractionDigits: 2,
+          })}
+        />
+        <Stat
+          label="52-week low"
+          value={candidate.indicators.week52Low.toLocaleString("en-IN", {
+            maximumFractionDigits: 2,
+          })}
         />
       </div>
 

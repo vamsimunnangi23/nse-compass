@@ -41,6 +41,8 @@ export interface Indicators {
   volumeRatio: number; // latestVolume / avgVolume20
   atr14: number;
   atrPercent: number; // atr14 / price * 100
+  week52High: number;
+  week52Low: number;
 }
 
 export interface Candidate {

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { atr, averageVolume, computeIndicators, rateOfChange, rsi, sma } from "./indicators";
+import {
+  atr,
+  averageVolume,
+  computeIndicators,
+  fiftyTwoWeekRange,
+  rateOfChange,
+  rsi,
+  sma,
+} from "./indicators";
 import type { OhlcvBar } from "./types";
 
 function bar(overrides: Partial<OhlcvBar> = {}): OhlcvBar {
@@ -85,6 +93,23 @@ describe("atr", () => {
   });
 });
 
+describe("fiftyTwoWeekRange", () => {
+  it("returns the max high and min low across the whole window when it fits", () => {
+    const bars = [
+      bar({ high: 110, low: 90 }),
+      bar({ high: 130, low: 70 }),
+      bar({ high: 100, low: 95 }),
+    ];
+    expect(fiftyTwoWeekRange(bars)).toEqual({ high: 130, low: 70 });
+  });
+
+  it("only looks at the trailing 252 sessions, ignoring older extremes", () => {
+    const old = Array.from({ length: 10 }, () => bar({ high: 1000, low: 900 }));
+    const recent = Array.from({ length: 252 }, () => bar({ high: 50, low: 40 }));
+    expect(fiftyTwoWeekRange([...old, ...recent])).toEqual({ high: 50, low: 40 });
+  });
+});
+
 describe("computeIndicators", () => {
   it("returns null when there are fewer than 51 bars", () => {
     const bars = Array.from({ length: 50 }, (_, i) => bar({ close: 100 + i }));
@@ -132,5 +157,10 @@ describe("computeIndicators", () => {
     // +1/day series, every true range works out to exactly 2.
     expect(ind.atr14).toBeCloseTo(2, 10);
     expect(ind.atrPercent).toBeCloseTo((2 / 150) * 100, 10);
+
+    // Monotonic series: the highest high and lowest low are the last and
+    // first bars respectively (high = close+1, low = close-1).
+    expect(ind.week52High).toBe(151);
+    expect(ind.week52Low).toBe(99);
   });
 });

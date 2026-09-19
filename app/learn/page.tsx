@@ -14,6 +14,10 @@ const TOPICS = [
     body: "Volume is how many shares changed hands. A price move on unusually high volume (compared to its own 20-day average) tends to carry more conviction than the same move on quiet, low volume.",
   },
   {
+    title: "52-week range",
+    body: "This compares the current price to its highest and lowest points over the trailing year. Stocks trading near their 52-week high often carry positive momentum (sometimes called a 'breakout'), though they can also be overextended. Stocks near their 52-week low may be out of favor — or a value opportunity, or simply still falling. On its own, this tells you where a stock sits in its yearly range, not which direction it goes next.",
+  },
+  {
     title: "Market conditions",
     body: "Individual stocks don't move in isolation. We check whether the NIFTY 50 index itself is trending up, down, or sideways, and treat a down-trending market as a headwind when scoring every stock.",
   },
