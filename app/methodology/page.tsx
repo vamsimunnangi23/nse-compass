@@ -172,18 +172,73 @@ export default function MethodologyPage() {
         <p className="mt-3 text-muted">
           The stocks bucket is split equally across the top {MAX_STOCKS} tracked
           stocks scoring Watch or better, capped at {MAX_STOCKS_PER_SECTOR} per
-          sector so picks aren&apos;t clustered in one industry. The fund and
-          ETF buckets are each split equally across a curated set of
-          categories (Mutual Fund Equity:{" "}
-          {EQUITY_FUND_CATEGORIES.map((c) => c.label).join(", ")}; Mutual
-          Fund Debt: {DEBT_FUND_CATEGORIES.map((c) => c.label).join(", ")};
-          ETF Equity: {EQUITY_ETF_CATEGORIES.map((c) => c.label).join(", ")};
-          ETF Debt: {DEBT_ETF_CATEGORIES.map((c) => c.label).join(", ")}),
-          each showing a few real current scheme names from India&apos;s
-          public AMFI data as examples — <strong>never ranked or picked as
-          &ldquo;best,&rdquo;</strong> since past fund returns are weak evidence
-          and picking individual schemes edges into regulated investment-advisory
-          territory this app doesn&apos;t claim to offer.
+          sector so picks aren&apos;t clustered in one industry.
+        </p>
+        <p className="mt-3 text-muted">
+          The fund and ETF buckets are split across a curated set of
+          categories — not equally, but by a per-category weight that shifts
+          with your risk profile (more stable categories get a bigger share
+          under Conservative; more volatile, higher-growth-potential ones get
+          a bigger share under Aggressive). Each category also shows a few
+          real current scheme names from India&apos;s public AMFI data as
+          examples — <strong>never ranked or picked as &ldquo;best,&rdquo;</strong>{" "}
+          since past fund returns are weak evidence and picking individual
+          schemes edges into regulated investment-advisory territory this
+          app doesn&apos;t claim to offer.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[420px] text-left text-sm text-muted">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide">
+                <th className="px-3 py-2 font-medium">Equity fund category</th>
+                <th className="px-3 py-2 font-medium">Conservative</th>
+                <th className="px-3 py-2 font-medium">Balanced</th>
+                <th className="px-3 py-2 font-medium">Aggressive</th>
+              </tr>
+            </thead>
+            <tbody>
+              {EQUITY_FUND_CATEGORIES.map((c) => (
+                <tr key={c.label} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 font-medium text-foreground">{c.label}</td>
+                  <td className="px-3 py-2">{c.riskWeights.Conservative}%</td>
+                  <td className="px-3 py-2">{c.riskWeights.Balanced}%</td>
+                  <td className="px-3 py-2">{c.riskWeights.Aggressive}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[420px] text-left text-sm text-muted">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide">
+                <th className="px-3 py-2 font-medium">Debt fund category</th>
+                <th className="px-3 py-2 font-medium">Conservative</th>
+                <th className="px-3 py-2 font-medium">Balanced</th>
+                <th className="px-3 py-2 font-medium">Aggressive</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DEBT_FUND_CATEGORIES.map((c) => (
+                <tr key={c.label} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 font-medium text-foreground">{c.label}</td>
+                  <td className="px-3 py-2">{c.riskWeights.Conservative}%</td>
+                  <td className="px-3 py-2">{c.riskWeights.Balanced}%</td>
+                  <td className="px-3 py-2">{c.riskWeights.Aggressive}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-muted">
+          ETF categories follow the same idea: {EQUITY_ETF_CATEGORIES[0].label}{" "}
+          is the only equity ETF category tracked, so it always gets the
+          whole equity ETF share; between the debt ETF categories,{" "}
+          {DEBT_ETF_CATEGORIES[0].label} gets{" "}
+          {DEBT_ETF_CATEGORIES[0].riskWeights.Conservative}% under
+          Conservative down to {DEBT_ETF_CATEGORIES[0].riskWeights.Aggressive}%
+          under Aggressive, with {DEBT_ETF_CATEGORIES[1].label} taking the
+          rest.
         </p>
         <p className="mt-3 text-muted">
           One factual note: ETFs are bought and sold on the exchange like a

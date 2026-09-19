@@ -1,7 +1,13 @@
 import { SIGNAL_THRESHOLDS } from "./scoring";
-import type { Candidate, FundCategoryDefinition, MutualFundScheme, Sector } from "./types";
+import type {
+  Candidate,
+  FundCategoryDefinition,
+  MutualFundScheme,
+  RiskProfileName,
+  Sector,
+} from "./types";
 
-export type RiskProfileName = "Conservative" | "Balanced" | "Aggressive";
+export type { RiskProfileName };
 export type InstrumentType = "Stocks" | "MutualFunds" | "Etf";
 export type FundMix = "Equity" | "Debt" | "Both";
 
@@ -110,6 +116,31 @@ export function splitByEquityShare(amount: number, equitySharePercent: number): 
 }
 
 /**
+ * Splits `amount` proportionally to `weights` (need not sum to 100 — they're
+ * normalized here), with the last share absorbing the rounding remainder so
+ * the total always reconciles exactly to `amount`. Falls back to an equal
+ * split if every weight is zero (or the list is empty).
+ */
+export function splitByWeights(amount: number, weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return splitEqually(amount, weights.length);
+
+  const shares: number[] = [];
+  let running = 0;
+  weights.forEach((w, i) => {
+    if (i === weights.length - 1) {
+      shares.push(amount - running);
+      return;
+    }
+    const share = Math.round((amount * w) / total);
+    shares.push(share);
+    running += share;
+  });
+  return shares;
+}
+
+/**
  * Picks up to `maxStocks` candidates at Watch signal or better, ranked by
  * score, capped at `maxPerSector` per sector so the picks are actually
  * diversified rather than clustered in whichever sector is hot.
@@ -142,9 +173,10 @@ export function buildFundCategoryAllocations(
   categoryDefs: FundCategoryDefinition[],
   allSchemes: MutualFundScheme[],
   group: "Equity" | "Debt",
+  profile: RiskProfileName,
   examplesPerCategory: number = EXAMPLE_SCHEMES_PER_CATEGORY,
 ): FundCategoryAllocation[] {
-  const shares = splitEqually(amount, categoryDefs.length);
+  const shares = splitByWeights(amount, categoryDefs.map((d) => d.riskWeights[profile]));
 
   return categoryDefs.map((def, i) => {
     const wanted = new Set(def.amfiCategories.map((c) => c.toLowerCase()));
@@ -184,6 +216,7 @@ function buildFundsBucket(
   bucket: "Mutual Funds" | "ETFs",
   amount: number,
   equitySharePercent: number,
+  profile: RiskProfileName,
   allSchemes: MutualFundScheme[],
   equityCategories: FundCategoryDefinition[],
   debtCategories: FundCategoryDefinition[],
@@ -193,8 +226,8 @@ function buildFundsBucket(
     bucket,
     amount,
     allocations: [
-      ...buildFundCategoryAllocations(equityShare, equityCategories, allSchemes, "Equity"),
-      ...buildFundCategoryAllocations(debtShare, debtCategories, allSchemes, "Debt"),
+      ...buildFundCategoryAllocations(equityShare, equityCategories, allSchemes, "Equity", profile),
+      ...buildFundCategoryAllocations(debtShare, debtCategories, allSchemes, "Debt", profile),
     ],
   };
 }
@@ -267,6 +300,7 @@ export function buildAllocation(
         "Mutual Funds",
         amounts.MutualFunds,
         equityShare,
+        profile,
         allSchemes,
         equityFundCategories,
         debtFundCategories,
@@ -279,6 +313,7 @@ export function buildAllocation(
         "ETFs",
         amounts.Etf,
         equityShare,
+        profile,
         allSchemes,
         equityEtfCategories,
         debtEtfCategories,

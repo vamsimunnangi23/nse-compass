@@ -161,14 +161,40 @@ describe("pickDiversifiedStocks", () => {
 
 describe("buildFundCategoryAllocations", () => {
   const categories: FundCategoryDefinition[] = [
-    { bucket: "Equity", label: "Large Cap", amfiCategories: ["Equity Scheme - Large Cap Fund"] },
-    { bucket: "Equity", label: "Mid Cap", amfiCategories: ["Equity Scheme - Mid Cap Fund"] },
+    {
+      bucket: "Equity",
+      label: "Large Cap",
+      amfiCategories: ["Equity Scheme - Large Cap Fund"],
+      riskWeights: { Conservative: 70, Balanced: 50, Aggressive: 30 },
+    },
+    {
+      bucket: "Equity",
+      label: "Mid Cap",
+      amfiCategories: ["Equity Scheme - Mid Cap Fund"],
+      riskWeights: { Conservative: 30, Balanced: 50, Aggressive: 70 },
+    },
   ];
 
-  it("splits the amount equally across categories, tags the group, and reconciles exactly", () => {
-    const allocations = buildFundCategoryAllocations(1000, categories, [], "Equity");
-    expect(allocations.map((a) => a.amount)).toEqual([500, 500]);
-    expect(allocations.every((a) => a.group === "Equity")).toBe(true);
+  it("splits the amount by each category's risk weight for the given profile, tags the group, and reconciles exactly", () => {
+    const balanced = buildFundCategoryAllocations(1000, categories, [], "Equity", "Balanced");
+    expect(balanced.map((a) => a.amount)).toEqual([500, 500]);
+    expect(balanced.every((a) => a.group === "Equity")).toBe(true);
+  });
+
+  it("gives a different split for a different risk profile, using the same categories", () => {
+    const conservative = buildFundCategoryAllocations(
+      1000,
+      categories,
+      [],
+      "Equity",
+      "Conservative",
+    );
+    const aggressive = buildFundCategoryAllocations(1000, categories, [], "Equity", "Aggressive");
+
+    expect(conservative.map((a) => a.amount)).toEqual([700, 300]); // Large Cap favored
+    expect(aggressive.map((a) => a.amount)).toEqual([300, 700]); // Mid Cap favored
+    expect(conservative.reduce((s, a) => s + a.amount, 0)).toBe(1000);
+    expect(aggressive.reduce((s, a) => s + a.amount, 0)).toBe(1000);
   });
 
   it("lists real, de-duplicated, alphabetically sorted scheme names per category", () => {
@@ -178,7 +204,7 @@ describe("buildFundCategoryAllocations", () => {
       scheme({ name: "Alpha Large Cap Fund", rawCategory: "Equity Scheme - Large Cap Fund" }), // duplicate share class
       scheme({ name: "Some Mid Cap Fund", rawCategory: "Equity Scheme - Mid Cap Fund" }),
     ];
-    const allocations = buildFundCategoryAllocations(1000, categories, schemes, "Equity");
+    const allocations = buildFundCategoryAllocations(1000, categories, schemes, "Equity", "Balanced");
 
     const largeCap = allocations.find((a) => a.label === "Large Cap")!;
     expect(largeCap.exampleSchemes).toEqual(["Alpha Large Cap Fund", "Zed Large Cap Fund"]);
@@ -191,23 +217,54 @@ describe("buildFundCategoryAllocations", () => {
     const schemes = Array.from({ length: 10 }, (_, i) =>
       scheme({ name: `Fund ${i}`, rawCategory: "Equity Scheme - Large Cap Fund" }),
     );
-    const allocations = buildFundCategoryAllocations(1000, [categories[0]], schemes, "Equity", 3);
+    const allocations = buildFundCategoryAllocations(
+      1000,
+      [categories[0]],
+      schemes,
+      "Equity",
+      "Balanced",
+      3,
+    );
     expect(allocations[0].exampleSchemes).toHaveLength(3);
   });
 });
 
 describe("buildAllocation", () => {
+  // Single-entry lists throughout — each always gets 100% of its group's
+  // share regardless of the weight value, so a flat weight keeps these
+  // fixtures focused on what buildAllocation itself is responsible for.
+  const flatWeights = { Conservative: 100, Balanced: 100, Aggressive: 100 };
   const equityFunds: FundCategoryDefinition[] = [
-    { bucket: "Equity", label: "Large Cap", amfiCategories: ["Equity Scheme - Large Cap Fund"] },
+    {
+      bucket: "Equity",
+      label: "Large Cap",
+      amfiCategories: ["Equity Scheme - Large Cap Fund"],
+      riskWeights: flatWeights,
+    },
   ];
   const debtFunds: FundCategoryDefinition[] = [
-    { bucket: "Debt", label: "Liquid Fund", amfiCategories: ["Debt Scheme - Liquid Fund"] },
+    {
+      bucket: "Debt",
+      label: "Liquid Fund",
+      amfiCategories: ["Debt Scheme - Liquid Fund"],
+      riskWeights: flatWeights,
+    },
   ];
   const equityEtfs: FundCategoryDefinition[] = [
-    { bucket: "Equity", label: "Equity ETF", amfiCategories: ["ETF - Equity ETF"] },
+    {
+      bucket: "Equity",
+      label: "Equity ETF",
+      amfiCategories: ["ETF - Equity ETF"],
+      riskWeights: flatWeights,
+    },
   ];
   const debtEtfs: FundCategoryDefinition[] = [
-    { bucket: "Debt", label: "Gold ETF", amfiCategories: ["ETF - Gold ETF"] },
+    {
+      bucket: "Debt",
+      label: "Gold ETF",
+      amfiCategories: ["ETF - Gold ETF"],
+      riskWeights: flatWeights,
+    },
   ];
 
   it("all three selected: splits into Stocks / Mutual Funds / ETFs per the profile, reconciling exactly", () => {

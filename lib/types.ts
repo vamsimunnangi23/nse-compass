@@ -83,6 +83,7 @@ export type ApiResult<T> =
   | { ok: false; error: string };
 
 export type FundBucket = "Equity" | "Debt" | "Hybrid" | "Other";
+export type RiskProfileName = "Conservative" | "Balanced" | "Aggressive";
 
 export interface MutualFundScheme {
   schemeCode: string;
@@ -97,4 +98,11 @@ export interface FundCategoryDefinition {
   bucket: FundBucket;
   label: string; // display label, e.g. "Large Cap"
   amfiCategories: string[]; // raw AMFI category strings this label matches (case-insensitive)
+  /**
+   * This category's share of its group (Equity or Debt) for each risk
+   * profile — must sum to 100 across every category within the same group.
+   * E.g. Conservative favors Large Cap over Mid Cap; Aggressive is the
+   * reverse. Disclosed directly on the methodology page.
+   */
+  riskWeights: Record<RiskProfileName, number>;
 }
