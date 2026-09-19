@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { DisclaimerBanner, ErrorBanner } from "@/components/Banners";
 import { attempt } from "@/lib/attempt";
-import { buildAllocation, RISK_PROFILES } from "@/lib/allocation";
-import type { AllocationPlan, InstrumentScope, RiskProfileName } from "@/lib/allocation";
+import { buildAllocation, INSTRUMENT_TYPE_ORDER, RISK_PROFILES } from "@/lib/allocation";
+import type { AllocationPlan, InstrumentType, RiskProfileName } from "@/lib/allocation";
 import {
   DEBT_ETF_CATEGORIES,
   DEBT_FUND_CATEGORIES,
@@ -19,13 +19,11 @@ export const metadata = { title: "Diversify — NSE Compass" };
 
 const PROFILE_NAMES = Object.keys(RISK_PROFILES) as RiskProfileName[];
 
-const SCOPE_OPTIONS: { value: InstrumentScope; label: string }[] = [
-  { value: "Mix", label: "Mix (Stocks + Mutual Funds + ETFs)" },
-  { value: "StocksOnly", label: "Stocks only" },
-  { value: "MutualFundsOnly", label: "Mutual Funds only" },
-  { value: "EtfOnly", label: "ETFs only" },
-];
-const SCOPE_VALUES = SCOPE_OPTIONS.map((o) => o.value);
+const TYPE_LABELS: Record<InstrumentType, string> = {
+  Stocks: "Stocks",
+  MutualFunds: "Mutual Funds",
+  Etf: "ETFs",
+};
 
 function parseAmount(raw: string | undefined): number | null {
   if (!raw) return null;
@@ -38,8 +36,9 @@ function isRiskProfile(value: string | undefined): value is RiskProfileName {
   return !!value && (PROFILE_NAMES as string[]).includes(value);
 }
 
-function isInstrumentScope(value: string | undefined): value is InstrumentScope {
-  return !!value && (SCOPE_VALUES as string[]).includes(value);
+function parseSelectedTypes(raw: string | string[] | undefined): InstrumentType[] {
+  const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  return INSTRUMENT_TYPE_ORDER.filter((t) => values.includes(t));
 }
 
 function symbolSlug(symbol: string): string {
@@ -53,18 +52,18 @@ function formatRupees(n: number): string {
 async function Results({
   amount,
   profile,
-  scope,
+  selectedTypes,
 }: {
   amount: number;
   profile: RiskProfileName;
-  scope: InstrumentScope;
+  selectedTypes: InstrumentType[];
 }) {
   const result = await attempt(async () => {
     const [candidates, schemes] = await Promise.all([getAllCandidates(), getAllSchemes()]);
     return buildAllocation(
       amount,
       profile,
-      scope,
+      selectedTypes,
       candidates,
       schemes,
       EQUITY_FUND_CATEGORIES,
@@ -172,22 +171,34 @@ function FundGroup({
 export default async function DiversifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ amount?: string; profile?: string; scope?: string }>;
+  searchParams: Promise<{
+    amount?: string;
+    profile?: string;
+    type?: string | string[];
+    submitted?: string;
+  }>;
 }) {
   const params = await searchParams;
   const amount = parseAmount(params.amount);
   const invalidAmount = params.amount !== undefined && amount === null;
   const profile: RiskProfileName = isRiskProfile(params.profile) ? params.profile : "Balanced";
-  const scope: InstrumentScope = isInstrumentScope(params.scope) ? params.scope : "Mix";
+
+  // On a fresh visit (no form submission yet) default to all three checked.
+  // Once submitted, respect exactly what's checked — including "none".
+  const wasSubmitted = params.submitted === "1";
+  const selectedTypes = wasSubmitted
+    ? parseSelectedTypes(params.type)
+    : [...INSTRUMENT_TYPE_ORDER];
+  const noneSelected = wasSubmitted && selectedTypes.length === 0;
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <h1 className="font-serif text-3xl sm:text-4xl">Diversify</h1>
       <p className="mt-2 text-muted">
-        Enter an amount, pick what to invest in, and pick a risk profile yourself — this tool
-        splits it using simple, disclosed rules. It does not know your goals, age, taxes, or
-        existing holdings, and it never picks a &ldquo;best&rdquo; mutual fund or ETF scheme for
-        you.
+        Enter an amount, check any combination of instrument types, and pick a risk profile
+        yourself — this tool splits your amount using simple, disclosed rules. It does not know
+        your goals, age, taxes, or existing holdings, and it never picks a &ldquo;best&rdquo;
+        mutual fund or ETF scheme for you.
       </p>
 
       <div className="mt-6 flex flex-col gap-3">
@@ -203,76 +214,88 @@ export default async function DiversifyPage({
 
       <form
         method="GET"
-        className="mt-8 flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface p-5"
+        className="mt-8 flex flex-col gap-4 rounded-xl border border-border bg-surface p-5"
       >
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted">Amount to invest (₹)</span>
-          <input
-            type="number"
-            name="amount"
-            min={1}
-            step="1"
-            defaultValue={amount ?? ""}
-            placeholder="e.g. 100000"
-            required
-            className="w-44 rounded-lg border border-border bg-background px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted">Invest in</span>
-          <select
-            name="scope"
-            defaultValue={scope}
-            className="w-56 rounded-lg border border-border bg-background px-3 py-2"
+        <input type="hidden" name="submitted" value="1" />
+
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted">Amount to invest (₹)</span>
+            <input
+              type="number"
+              name="amount"
+              min={1}
+              step="1"
+              defaultValue={amount ?? ""}
+              placeholder="e.g. 100000"
+              required
+              className="w-44 rounded-lg border border-border bg-background px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted">Risk profile</span>
+            <select
+              name="profile"
+              defaultValue={profile}
+              className="w-40 rounded-lg border border-border bg-background px-3 py-2"
+            >
+              {PROFILE_NAMES.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
           >
-            {SCOPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+            Build allocation
+          </button>
+        </div>
+
+        <div>
+          <p className="text-sm text-muted">Invest in (check any combination)</p>
+          <div className="mt-2 flex flex-wrap gap-4">
+            {INSTRUMENT_TYPE_ORDER.map((t) => (
+              <label key={t} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="type"
+                  value={t}
+                  defaultChecked={selectedTypes.includes(t)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                {TYPE_LABELS[t]}
+              </label>
             ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted">Risk profile</span>
-          <select
-            name="profile"
-            defaultValue={profile}
-            className="w-40 rounded-lg border border-border bg-background px-3 py-2"
-          >
-            {PROFILE_NAMES.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
-        >
-          Build allocation
-        </button>
+          </div>
+        </div>
       </form>
 
-      {scope !== "StocksOnly" && (
+      {selectedTypes.length > 0 && (
         <p className="mt-2 text-xs text-muted">
-          Risk profile only affects the equity/debt split within Mutual Funds and ETFs
-          {scope === "Mix" ? " (and how much goes to Stocks vs. funds vs. ETFs)" : ""}.
+          {selectedTypes.length === 1
+            ? `Risk profile only affects the equity/debt split within ${TYPE_LABELS[selectedTypes[0]]}.`
+            : "The risk profile decides both the split across what you checked and the equity/debt split within Mutual Funds and ETFs. Checking fewer types renormalizes their relative weights — it doesn't change their ratio to each other."}
         </p>
       )}
 
       {invalidAmount && (
         <p className="mt-3 text-sm text-danger">Enter a valid amount greater than zero.</p>
       )}
+      {noneSelected && (
+        <p className="mt-3 text-sm text-danger">Check at least one instrument type.</p>
+      )}
 
-      {amount && (
+      {amount && !noneSelected && (
         <div className="mt-8">
           <Suspense
             fallback={
               <div className="h-40 animate-pulse rounded-xl border border-border bg-surface" />
             }
           >
-            <Results amount={amount} profile={profile} scope={scope} />
+            <Results amount={amount} profile={profile} selectedTypes={selectedTypes} />
           </Suspense>
         </div>
       )}

@@ -126,15 +126,19 @@ export default function MethodologyPage() {
           <Link href="/diversify" className="text-accent hover:underline">
             Diversify
           </Link>{" "}
-          page splits an amount you enter across three instrument types —
-          Stocks, Mutual Funds, and ETFs — or, if you&apos;d rather, puts
-          the whole amount into just one of those. Either way, a risk
-          profile <em>you</em> pick decides the split; the app never infers
-          your risk tolerance, goals, age, or tax situation.
+          page splits an amount you enter across whichever instrument types
+          you check — Stocks, Mutual Funds, ETFs, any two of them, or all
+          three. A risk profile <em>you</em> pick decides the split; the app
+          never infers your risk tolerance, goals, age, or tax situation.
         </p>
         <p className="mt-3 text-muted">
-          When investing in a mix of all three, each profile sets the
-          top-level split:
+          Each profile defines a baseline weight for all three types. When
+          you check all three, the split matches those weights exactly; when
+          you check fewer, the weights of just the checked types are
+          renormalized to sum to 100% — so, for example, checking only
+          Stocks and Mutual Funds keeps their relative ratio to each other
+          the same as it would be in the full mix, it just excludes ETFs
+          rather than silently changing how Stocks and Mutual Funds compare:
         </p>
         <ul className="mt-3 flex flex-col gap-1 text-muted">
           {(Object.keys(RISK_PROFILES) as RiskProfileName[]).map((name) => {
@@ -150,11 +154,10 @@ export default function MethodologyPage() {
         </ul>
         <p className="mt-3 text-muted">
           The same profile also decides the equity/debt split{" "}
-          <em>within</em> the Mutual Funds and ETF buckets (or the whole
-          amount, if you picked one of those instrument types only) — e.g.
-          Balanced puts {RISK_PROFILES.Balanced.equityShareWithinFunds}% of
-          that money into equity-type categories and the rest into debt-type
-          categories.
+          <em>within</em> the Mutual Funds and ETF buckets, whether or not
+          the other instrument types are also checked — e.g. Balanced puts{" "}
+          {RISK_PROFILES.Balanced.equityShareWithinFunds}% of that money into
+          equity-type categories and the rest into debt-type categories.
         </p>
         <p className="mt-3 text-muted">
           The stocks bucket is split equally across the top {MAX_STOCKS} tracked

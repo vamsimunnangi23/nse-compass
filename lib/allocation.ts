@@ -2,7 +2,10 @@ import { SIGNAL_THRESHOLDS } from "./scoring";
 import type { Candidate, FundCategoryDefinition, MutualFundScheme, Sector } from "./types";
 
 export type RiskProfileName = "Conservative" | "Balanced" | "Aggressive";
-export type InstrumentScope = "Mix" | "StocksOnly" | "MutualFundsOnly" | "EtfOnly";
+export type InstrumentType = "Stocks" | "MutualFunds" | "Etf";
+
+/** Fixed display/processing order, independent of how the user checked them. */
+export const INSTRUMENT_TYPE_ORDER: InstrumentType[] = ["Stocks", "MutualFunds", "Etf"];
 
 export interface RiskProfileWeights {
   stocksPercent: number;
@@ -68,7 +71,7 @@ export interface AllocationBucket {
 export interface AllocationPlan {
   totalAmount: number;
   profile: RiskProfileName;
-  scope: InstrumentScope;
+  selectedTypes: InstrumentType[];
   buckets: AllocationBucket[];
 }
 
@@ -176,10 +179,50 @@ function buildFundsBucket(
   };
 }
 
+/**
+ * Splits `amount` across whichever instrument types are selected, in
+ * INSTRUMENT_TYPE_ORDER, by renormalizing the profile's three weights to
+ * sum to 100% over just the selected subset (so relative proportions are
+ * preserved — e.g. Balanced's stocks:mutualFunds ratio stays 25:45 whether
+ * or not ETFs are also selected). The last selected type absorbs the
+ * rounding remainder so the shares always reconcile exactly to `amount`.
+ */
+export function splitBySelectedTypes(
+  amount: number,
+  weights: RiskProfileWeights,
+  selectedTypes: InstrumentType[],
+): Partial<Record<InstrumentType, number>> {
+  const selected = INSTRUMENT_TYPE_ORDER.filter((t) => selectedTypes.includes(t));
+  if (selected.length === 0) return {};
+
+  const rawPercent: Record<InstrumentType, number> = {
+    Stocks: weights.stocksPercent,
+    MutualFunds: weights.mutualFundsPercent,
+    Etf: weights.etfPercent,
+  };
+  const totalPercent = selected.reduce((sum, t) => sum + rawPercent[t], 0);
+
+  const amounts: Partial<Record<InstrumentType, number>> = {};
+  let runningTotal = 0;
+
+  selected.forEach((type, i) => {
+    if (i === selected.length - 1) {
+      amounts[type] = amount - runningTotal;
+      return;
+    }
+    const share = totalPercent > 0 ? rawPercent[type] / totalPercent : 1 / selected.length;
+    const shareAmount = Math.round(amount * share);
+    amounts[type] = shareAmount;
+    runningTotal += shareAmount;
+  });
+
+  return amounts;
+}
+
 export function buildAllocation(
   amount: number,
   profile: RiskProfileName,
-  scope: InstrumentScope,
+  selectedTypes: InstrumentType[],
   candidates: Candidate[],
   allSchemes: MutualFundScheme[],
   equityFundCategories: FundCategoryDefinition[],
@@ -188,35 +231,19 @@ export function buildAllocation(
   debtEtfCategories: FundCategoryDefinition[],
 ): AllocationPlan {
   const weights = RISK_PROFILES[profile];
-
-  let stocksAmount = 0;
-  let mutualFundsAmount = 0;
-  let etfAmount = 0;
-
-  if (scope === "StocksOnly") {
-    stocksAmount = amount;
-  } else if (scope === "MutualFundsOnly") {
-    mutualFundsAmount = amount;
-  } else if (scope === "EtfOnly") {
-    etfAmount = amount;
-  } else {
-    stocksAmount = Math.round((amount * weights.stocksPercent) / 100);
-    mutualFundsAmount = Math.round((amount * weights.mutualFundsPercent) / 100);
-    // ETF takes whatever's left so the three top-level amounts always
-    // reconcile exactly to `amount`, regardless of rounding above.
-    etfAmount = amount - stocksAmount - mutualFundsAmount;
-  }
+  const selected = INSTRUMENT_TYPE_ORDER.filter((t) => selectedTypes.includes(t));
+  const amounts = splitBySelectedTypes(amount, weights, selected);
 
   const buckets: AllocationBucket[] = [];
 
-  if (scope === "Mix" || scope === "StocksOnly") {
-    buckets.push(buildStocksBucket(stocksAmount, candidates));
+  if (amounts.Stocks !== undefined) {
+    buckets.push(buildStocksBucket(amounts.Stocks, candidates));
   }
-  if (scope === "Mix" || scope === "MutualFundsOnly") {
+  if (amounts.MutualFunds !== undefined) {
     buckets.push(
       buildFundsBucket(
         "Mutual Funds",
-        mutualFundsAmount,
+        amounts.MutualFunds,
         weights.equityShareWithinFunds,
         allSchemes,
         equityFundCategories,
@@ -224,11 +251,11 @@ export function buildAllocation(
       ),
     );
   }
-  if (scope === "Mix" || scope === "EtfOnly") {
+  if (amounts.Etf !== undefined) {
     buckets.push(
       buildFundsBucket(
         "ETFs",
-        etfAmount,
+        amounts.Etf,
         weights.equityShareWithinFunds,
         allSchemes,
         equityEtfCategories,
@@ -237,5 +264,5 @@ export function buildAllocation(
     );
   }
 
-  return { totalAmount: amount, profile, scope, buckets };
+  return { totalAmount: amount, profile, selectedTypes: selected, buckets };
 }
