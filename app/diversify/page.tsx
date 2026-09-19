@@ -25,6 +25,63 @@ const TYPE_LABELS: Record<InstrumentType, string> = {
   Etf: "ETFs",
 };
 
+const TYPE_DESCRIPTIONS: Record<InstrumentType, string> = {
+  Stocks: "Top tracked picks",
+  MutualFunds: "By category, via AMC",
+  Etf: "By category, on-exchange",
+};
+
+function TypeIcon({ type }: { type: InstrumentType }) {
+  if (type === "Stocks") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 20V10M11 20V4M18 20V14" />
+      </svg>
+    );
+  }
+  if (type === "MutualFunds") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2v10l7 4a10 10 0 1 1-7-14Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7V5a4 4 0 0 1 8 0v2" />
+    </svg>
+  );
+}
+
+function TypeToggleCard({ type, defaultChecked }: { type: InstrumentType; defaultChecked: boolean }) {
+  return (
+    <label
+      className="group relative flex flex-1 cursor-pointer items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 transition-colors has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
+    >
+      <input
+        type="checkbox"
+        name="type"
+        value={type}
+        defaultChecked={defaultChecked}
+        className="sr-only"
+      />
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-border text-muted transition-colors group-has-[:checked]:bg-accent group-has-[:checked]:text-background">
+        <TypeIcon type={type} />
+      </span>
+      <span className="flex flex-col">
+        <span className="text-sm font-semibold">{TYPE_LABELS[type]}</span>
+        <span className="text-xs text-muted">{TYPE_DESCRIPTIONS[type]}</span>
+      </span>
+      <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors group-has-[:checked]:border-accent group-has-[:checked]:bg-accent group-has-[:checked]:text-background">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    </label>
+  );
+}
+
 function parseAmount(raw: string | undefined): number | null {
   if (!raw) return null;
   const n = Number(raw);
@@ -255,19 +312,10 @@ export default async function DiversifyPage({
         </div>
 
         <div>
-          <p className="text-sm text-muted">Invest in (check any combination)</p>
-          <div className="mt-2 flex flex-wrap gap-4">
+          <p className="text-sm text-muted">Invest in (select any combination)</p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
             {INSTRUMENT_TYPE_ORDER.map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="type"
-                  value={t}
-                  defaultChecked={selectedTypes.includes(t)}
-                  className="h-4 w-4 rounded border-border"
-                />
-                {TYPE_LABELS[t]}
-              </label>
+              <TypeToggleCard key={t} type={t} defaultChecked={selectedTypes.includes(t)} />
             ))}
           </div>
         </div>
