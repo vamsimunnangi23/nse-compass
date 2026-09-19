@@ -81,3 +81,20 @@ export interface MarketSnapshot {
 export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+export type FundBucket = "Equity" | "Debt" | "Hybrid" | "Other";
+
+export interface MutualFundScheme {
+  schemeCode: string;
+  name: string;
+  amc: string;
+  rawCategory: string; // AMFI's own category string, e.g. "Equity Scheme - Large Cap Fund"
+  nav: number;
+  navDate: string; // ISO date
+}
+
+export interface FundCategoryDefinition {
+  bucket: FundBucket;
+  label: string; // display label, e.g. "Large Cap"
+  amfiCategories: string[]; // raw AMFI category strings this label matches (case-insensitive)
+}

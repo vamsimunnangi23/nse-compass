@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { MAX_STOCKS, MAX_STOCKS_PER_SECTOR, RISK_PROFILES } from "@/lib/allocation";
+import type { RiskProfileName } from "@/lib/allocation";
+import { DEBT_FUND_CATEGORIES, EQUITY_FUND_CATEGORIES } from "@/lib/fundCategories";
 import {
   MARKET_HEADWIND_PENALTY,
   RISK_THRESHOLDS,
@@ -109,6 +112,44 @@ export default function MethodologyPage() {
             above {RISK_THRESHOLDS.mediumMaxAtrPercent}% of price
           </li>
         </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold">Diversification tool</h2>
+        <p className="mt-2 text-muted">
+          The{" "}
+          <Link href="/diversify" className="text-accent hover:underline">
+            Diversify
+          </Link>{" "}
+          page splits an amount you enter across Stocks, Equity Funds, and
+          Debt Funds using a risk profile <em>you</em> pick — the app never
+          infers your risk tolerance, goals, age, or tax situation:
+        </p>
+        <ul className="mt-3 flex flex-col gap-1 text-muted">
+          {(Object.keys(RISK_PROFILES) as RiskProfileName[]).map((name) => {
+            const weights = RISK_PROFILES[name];
+            return (
+              <li key={name}>
+                <span className="font-semibold text-foreground">{name}</span> —{" "}
+                {weights.stocksPercent}% stocks / {weights.equityFundsPercent}% equity funds /{" "}
+                {weights.debtFundsPercent}% debt funds
+              </li>
+            );
+          })}
+        </ul>
+        <p className="mt-3 text-muted">
+          The stocks bucket is split equally across the top {MAX_STOCKS} tracked
+          stocks scoring Watch or better, capped at {MAX_STOCKS_PER_SECTOR} per
+          sector so picks aren&apos;t clustered in one industry. The fund
+          buckets are split equally across a curated set of categories
+          (Equity: {EQUITY_FUND_CATEGORIES.map((c) => c.label).join(", ")};
+          Debt: {DEBT_FUND_CATEGORIES.map((c) => c.label).join(", ")}), each
+          showing a few real Direct-Growth scheme names from India&apos;s
+          public AMFI data as examples — <strong>never ranked or picked as
+          &ldquo;best,&rdquo;</strong> since past fund returns are weak evidence
+          and picking individual schemes edges into regulated investment-advisory
+          territory this app doesn&apos;t claim to offer.
+        </p>
       </section>
 
       <section className="mt-8">
